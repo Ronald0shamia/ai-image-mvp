@@ -1,10 +1,10 @@
 <?php
 /**
  * Plugin Name: AI Image Analyzer
- * Plugin URI:  https://mrs-dev.com
- * Description: Analysiert Bilder mit KI und zeigt während der Analyse eine Werbeanzeige.
+ * Plugin URI:  https://example.com
+ * Description: Analysiert Bilder mit Google Gemini AI und zeigt während der Analyse eine Werbeanzeige.
  * Version:     1.0.0
- * Author:      Raeed
+ * Author:      Your Name
  * License:     GPL2
  */
 
@@ -45,7 +45,7 @@ class AIA_Admin {
     public static function sanitize_settings( $input ) {
         $clean = [];
         $clean['api_key']       = sanitize_text_field( $input['api_key'] ?? '' );
-        $clean['ai_model']      = sanitize_text_field( $input['ai_model'] ?? 'claude-opus-4-5' );
+        $clean['ai_model']      = sanitize_text_field( $input['ai_model'] ?? 'gemini-1.5-flash' );
         $clean['system_prompt'] = sanitize_textarea_field( $input['system_prompt'] ?? '' );
         $clean['ad_type']       = in_array( $input['ad_type'] ?? '', ['image','html'] ) ? $input['ad_type'] : 'image';
         $clean['ad_image_url']  = esc_url_raw( $input['ad_image_url'] ?? '' );
@@ -94,7 +94,7 @@ class AIA_Admin {
                                 class="regular-text"
                                 autocomplete="off"
                             />
-                            <p class="description">Dein Anthropic API-Schlüssel. Beginnt mit <code>sk-ant-...</code></p>
+                            <p class="description">Dein Google AI API-Schlüssel von <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>.</p>
                         </td>
                     </tr>
                     <tr>
@@ -103,11 +103,11 @@ class AIA_Admin {
                             <select id="aia_ai_model" name="aia_settings[ai_model]">
                                 <?php
                                 $models = [
-                                    'claude-opus-4-5'   => 'Claude Opus 4.5 (leistungsstark)',
-                                    'claude-sonnet-4-5' => 'Claude Sonnet 4.5 (ausgewogen)',
-                                    'claude-haiku-4-5'  => 'Claude Haiku 4.5 (schnell & günstig)',
+                                    'gemini-1.5-flash'   => 'Gemini 1.5 Flash (schnell & günstig)',
+                                    'gemini-1.5-pro'     => 'Gemini 1.5 Pro (leistungsstark)',
+                                    'gemini-2.0-flash'   => 'Gemini 2.0 Flash (neueste Generation)',
                                 ];
-                                $current = $opts['ai_model'] ?? 'claude-opus-4-5';
+                                $current = $opts['ai_model'] ?? 'gemini-1.5-flash';
                                 foreach ( $models as $val => $label ) {
                                     printf(
                                         '<option value="%s" %s>%s</option>',
@@ -479,7 +479,7 @@ class AIA_Frontend {
         return ob_get_clean();
     }
 
-    // ── AJAX-Handler: Bild an Claude API senden ──
+    // ── AJAX-Handler: Bild an Google Gemini API senden ──
     public static function ajax_analyze() {
         // Sicherheits-Check
         if ( ! check_ajax_referer( 'aia_analyze_nonce', 'nonce', false ) ) {
@@ -487,7 +487,7 @@ class AIA_Frontend {
         }
 
         $api_key       = AIA_Admin::get_setting('api_key');
-        $model         = AIA_Admin::get_setting('ai_model', 'claude-opus-4-5');
+        $model         = AIA_Admin::get_setting('ai_model', 'gemini-1.5-flash');
         $system_prompt = AIA_Admin::get_setting('system_prompt', 'Analysiere dieses Bild detailliert.');
 
         if ( empty($api_key) ) {
@@ -501,40 +501,44 @@ class AIA_Frontend {
             wp_send_json_error( 'Kein Bild empfangen.' );
         }
 
-        // Anthropic API-Aufruf
+        // Google Gemini API-Aufruf
+        $url = sprintf(
+            'https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s',
+            urlencode($model),
+            urlencode($api_key)
+        );
+
         $body = [
-            'model'      => $model,
-            'max_tokens' => 1024,
-            'system'     => $system_prompt,
-            'messages'   => [
+            'system_instruction' => [
+                'parts' => [ [ 'text' => $system_prompt ] ]
+            ],
+            'contents' => [
                 [
-                    'role'    => 'user',
-                    'content' => [
+                    'parts' => [
                         [
-                            'type'   => 'image',
-                            'source' => [
-                                'type'       => 'base64',
-                                'media_type' => $mime_type,
-                                'data'       => $image_data,
+                            'inline_data' => [
+                                'mime_type' => $mime_type,
+                                'data'      => $image_data,
                             ]
                         ],
                         [
-                            'type' => 'text',
                             'text' => 'Bitte analysiere dieses Bild.'
                         ]
                     ]
                 ]
+            ],
+            'generationConfig' => [
+                'maxOutputTokens' => 1024,
+                'temperature'     => 0.4,
             ]
         ];
 
         $response = wp_remote_post(
-            'https://api.anthropic.com/v1/messages',
+            $url,
             [
                 'timeout' => 60,
                 'headers' => [
-                    'Content-Type'      => 'application/json',
-                    'x-api-key'         => $api_key,
-                    'anthropic-version' => '2023-06-01',
+                    'Content-Type' => 'application/json',
                 ],
                 'body' => wp_json_encode( $body ),
             ]
@@ -544,15 +548,15 @@ class AIA_Frontend {
             wp_send_json_error( 'API-Verbindungsfehler: ' . $response->get_error_message() );
         }
 
-        $code = wp_remote_retrieve_response_code($response);
-        $body = json_decode( wp_remote_retrieve_body($response), true );
+        $code         = wp_remote_retrieve_response_code($response);
+        $decoded_body = json_decode( wp_remote_retrieve_body($response), true );
 
         if ( $code !== 200 ) {
-            $msg = $body['error']['message'] ?? 'Unbekannter API-Fehler (Code ' . $code . ')';
+            $msg = $decoded_body['error']['message'] ?? 'Unbekannter API-Fehler (Code ' . $code . ')';
             wp_send_json_error( $msg );
         }
 
-        $result = $body['content'][0]['text'] ?? '';
+        $result = $decoded_body['candidates'][0]['content']['parts'][0]['text'] ?? '';
 
         if ( empty($result) ) {
             wp_send_json_error( 'Die KI hat keine Antwort zurückgegeben.' );
