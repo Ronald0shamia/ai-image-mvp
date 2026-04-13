@@ -45,7 +45,7 @@ class AIA_Admin {
     public static function sanitize_settings( $input ) {
         $clean = [];
         $clean['api_key']       = sanitize_text_field( $input['api_key'] ?? '' );
-        $clean['ai_model']      = sanitize_text_field( $input['ai_model'] ?? 'gemini-1.5-flash' );
+        $clean['ai_model']      = sanitize_text_field( $input['ai_model'] ?? 'gemini-2.5-flash' );
         $clean['system_prompt'] = sanitize_textarea_field( $input['system_prompt'] ?? '' );
         $clean['ad_type']       = in_array( $input['ad_type'] ?? '', ['image','html'] ) ? $input['ad_type'] : 'image';
         $clean['ad_image_url']  = esc_url_raw( $input['ad_image_url'] ?? '' );
@@ -103,11 +103,11 @@ class AIA_Admin {
                             <select id="aia_ai_model" name="aia_settings[ai_model]">
                                 <?php
                                 $models = [
-                                    'gemini-1.5-flash'   => 'Gemini 1.5 Flash (schnell & günstig)',
-                                    'gemini-1.5-pro'     => 'Gemini 1.5 Pro (leistungsstark)',
-                                    'gemini-2.0-flash'   => 'Gemini 2.0 Flash (neueste Generation)',
+                                    'gemini-2.5-flash'   => 'Gemini 2.5 Flash (schnell & günstig) ⭐',
+                                    'gemini-2.5-pro'     => 'Gemini 2.5 Pro (leistungsstark)',
+                                    'gemini-2.0-flash'   => 'Gemini 2.0 Flash (stabil)',
                                 ];
-                                $current = $opts['ai_model'] ?? 'gemini-1.5-flash';
+                                $current = $opts['ai_model'] ?? 'gemini-2.5-flash';
                                 foreach ( $models as $val => $label ) {
                                     printf(
                                         '<option value="%s" %s>%s</option>',
@@ -487,7 +487,7 @@ class AIA_Frontend {
         }
 
         $api_key       = AIA_Admin::get_setting('api_key');
-        $model         = AIA_Admin::get_setting('ai_model', 'gemini-1.5-flash');
+        $model         = AIA_Admin::get_setting('ai_model', 'gemini-2.5-flash');
         $system_prompt = AIA_Admin::get_setting('system_prompt', 'Analysiere dieses Bild detailliert.');
 
         if ( empty($api_key) ) {
