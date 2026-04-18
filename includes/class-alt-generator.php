@@ -4,40 +4,34 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class AAG_Alt_Generator {
 
     public static function init() {
-        // AJAX-Handler
         add_action( 'wp_ajax_aag_generate_alt', [ __CLASS__, 'ajax_generate' ] );
 
-        // Button in der Medienbibliothek (Anhang-Bearbeitungsseite)
+        // Button auf der Einzelbild-Bearbeitungsseite (post.php?post=X&action=edit)
         add_filter( 'attachment_fields_to_edit', [ __CLASS__, 'add_button_to_attachment_fields' ], 10, 2 );
 
-        // Button im Block-Editor & Classic Editor via JS
+        // Scripts für die Medienbibliothek-Seite (upload.php) und post.php
+        add_action( 'admin_enqueue_scripts', [ __CLASS__, 'enqueue_attachment_page_assets' ] );
+
+        // Scripts für den Block-Editor
         add_action( 'enqueue_block_editor_assets', [ __CLASS__, 'enqueue_block_editor_assets' ] );
-        add_action( 'wp_enqueue_media',            [ __CLASS__, 'enqueue_media_assets' ] );
+
+        // Scripts für das Medien-Modal (in Post-Editoren)
+        add_action( 'wp_enqueue_media', [ __CLASS__, 'enqueue_media_assets' ] );
     }
 
-    // ── Anhang-Bearbeitungsseite: Button neben dem Alt-Feld ──
+    // ── Button-HTML im Anhang-Formular ──────────────────────
     public static function add_button_to_attachment_fields( array $form_fields, WP_Post $post ): array {
         if ( ! wp_attachment_is_image( $post->ID ) ) return $form_fields;
 
-        $image_url = wp_get_attachment_url( $post->ID );
-        $nonce     = wp_create_nonce( 'aag_generate_nonce' );
-
         $form_fields['aag_generate'] = [
-            'label' => __( 'AI Alt-Text', 'ai-alt-gen' ),
+            'label' => 'AI Alt-Text',
             'input' => 'html',
             'html'  => sprintf(
-                '<button type="button" class="button aag-generate-btn"
-                    data-id="%d"
-                    data-url="%s"
-                    data-nonce="%s">
-                    <span class="aag-btn-icon">&#10024;</span>
-                    %s
+                '<button type="button" class="button aag-generate-btn" data-id="%d">
+                    ✨ Alt-Text generieren
                 </button>
-                <span class="aag-status" id="aag-status-%d"></span>',
+                <span class="aag-status" id="aag-status-%d" style="display:block;margin-top:6px;font-size:12px;"></span>',
                 $post->ID,
-                esc_url( $image_url ),
-                esc_attr( $nonce ),
-                __( 'Alt-Text generieren', 'ai-alt-gen' ),
                 $post->ID
             ),
         ];
@@ -45,7 +39,29 @@ class AAG_Alt_Generator {
         return $form_fields;
     }
 
-    // ── Block-Editor: Script der Button-Logik injiziert ──
+    // ── Scripts für Medienbibliothek & Attachment-Seite ─────
+    public static function enqueue_attachment_page_assets( string $hook ) {
+        // upload.php  = Medienbibliothek (Grid + Listenansicht)
+        // post.php    = Einzelbild-Bearbeitungsseite
+        if ( ! in_array( $hook, [ 'upload.php', 'post.php', 'post-new.php' ] ) ) return;
+
+        wp_enqueue_style( 'aag-frontend', AAG_URL . 'assets/frontend.css', [], AAG_VERSION );
+
+        wp_enqueue_script(
+            'aag-attachment',
+            AAG_URL . 'assets/attachment.js',
+            [ 'jquery' ],
+            AAG_VERSION,
+            true
+        );
+
+        wp_localize_script( 'aag-attachment', 'aagData', [
+            'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+            'nonce'   => wp_create_nonce( 'aag_generate_nonce' ),
+        ] );
+    }
+
+    // ── Block-Editor ─────────────────────────────────────────
     public static function enqueue_block_editor_assets() {
         wp_enqueue_script(
             'aag-block-editor',
@@ -54,11 +70,20 @@ class AAG_Alt_Generator {
             AAG_VERSION,
             true
         );
-        self::localize_script( 'aag-block-editor' );
+        wp_localize_script( 'aag-block-editor', 'aagData', [
+            'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+            'nonce'   => wp_create_nonce( 'aag_generate_nonce' ),
+            'labels'  => [
+                'generate' => 'Alt-Text generieren',
+                'loading'  => 'Wird generiert…',
+            ],
+        ] );
     }
 
-    // ── Medien-Modal: Script ──
+    // ── Medien-Modal ─────────────────────────────────────────
     public static function enqueue_media_assets() {
+        wp_enqueue_style( 'aag-frontend', AAG_URL . 'assets/frontend.css', [], AAG_VERSION );
+
         wp_enqueue_script(
             'aag-media-modal',
             AAG_URL . 'assets/media-modal.js',
@@ -66,30 +91,17 @@ class AAG_Alt_Generator {
             AAG_VERSION,
             true
         );
-        self::localize_script( 'aag-media-modal' );
-
-        wp_enqueue_style(
-            'aag-media-modal-css',
-            AAG_URL . 'assets/frontend.css',
-            [],
-            AAG_VERSION
-        );
-    }
-
-    private static function localize_script( string $handle ) {
-        wp_localize_script( $handle, 'aagData', [
+        wp_localize_script( 'aag-media-modal', 'aagData', [
             'ajaxUrl' => admin_url( 'admin-ajax.php' ),
             'nonce'   => wp_create_nonce( 'aag_generate_nonce' ),
             'labels'  => [
-                'generate' => __( 'Alt-Text generieren', 'ai-alt-gen' ),
-                'loading'  => __( 'Wird generiert…',     'ai-alt-gen' ),
-                'success'  => __( 'Alt-Text gesetzt!',   'ai-alt-gen' ),
-                'error'    => __( 'Fehler: ',             'ai-alt-gen' ),
+                'generate' => 'Alt-Text generieren',
+                'loading'  => 'Wird generiert…',
             ],
         ] );
     }
 
-    // ── AJAX: Alt-Text generieren & speichern ──
+    // ── AJAX ─────────────────────────────────────────────────
     public static function ajax_generate() {
         if ( ! check_ajax_referer( 'aag_generate_nonce', 'nonce', false ) ) {
             wp_send_json_error( [ 'message' => 'Sicherheitsfehler.' ] );
@@ -114,14 +126,8 @@ class AAG_Alt_Generator {
         try {
             $alt_text = AAG_API_Handler::generate_alt( $image_url, $prompt );
             $alt_text = sanitize_text_field( trim( $alt_text ) );
-
-            // Alt-Text in der WordPress-Medienbibliothek speichern
             update_post_meta( $attachment_id, '_wp_attachment_image_alt', $alt_text );
-
-            wp_send_json_success( [
-                'alt'           => $alt_text,
-                'attachment_id' => $attachment_id,
-            ] );
+            wp_send_json_success( [ 'alt' => $alt_text, 'attachment_id' => $attachment_id ] );
         } catch ( Exception $e ) {
             wp_send_json_error( [ 'message' => $e->getMessage() ] );
         }
