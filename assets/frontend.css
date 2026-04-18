@@ -1,0 +1,32 @@
+.aag-generate-btn,
+.aag-media-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #6366f1;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 6px;
+    padding: 7px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .15s, opacity .15s;
+}
+.aag-generate-btn:hover,
+.aag-media-btn:hover {
+    background: #4f46e5 !important;
+    color: #fff !important;
+}
+.aag-generate-btn:disabled,
+.aag-media-btn:disabled {
+    opacity: .6;
+    cursor: not-allowed;
+}
+.aag-btn-icon { font-size: 14px; }
+.aag-status,
+.aag-media-status {
+    display: block;
+    font-size: 12px;
+    margin-top: 5px;
+    line-height: 1.4;
+}

@@ -1,0 +1,8 @@
+Was das Plugin jetzt kann:
+Der "Alt-Text generieren" Button erscheint an drei Stellen: beim Bearbeiten eines Bildes in der Medienbibliothek, direkt im Gutenberg Block-Editor wenn ein Bild-Block ausgewählt ist, und im Media-Upload-Modal. Ein Klick schickt das Bild an die KI, der generierte Alt-Text wird automatisch in WordPress gespeichert.
+Admin-Menü hat jetzt:
+
+Anbieter frei wählbar: Google Gemini, OpenAI oder Claude — jeder mit eigenem Key und Modell-Auswahl
+Bearbeitbarer Standard-Prompt mit Reset-Button
+Legacy-Sektion mit den alten Anzeigen-Einstellungen als Vorschau erhalten
+Status-Anzeige ob der aktive Key gesetzt ist
