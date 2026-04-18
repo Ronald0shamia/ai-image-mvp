@@ -3,31 +3,35 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 class AAG_API_Handler {
 
+    // Einstiegspunkt für Medienbibliothek (via URL)
     public static function generate_alt( string $image_url, string $prompt ): string {
-        $opts     = get_option( AAG_OPTION, [] );
-        $provider = $opts['provider'] ?? 'gemini';
+        $opts = get_option( AAG_OPTION, [] );
+        $img  = self::fetch_image_base64( $image_url );
+        return self::dispatch( $img['data'], $img['mime'], $prompt, $opts );
+    }
 
+    // Einstiegspunkt für Frontend-Shortcode (via base64 direkt)
+    public static function generate_alt_from_base64( string $b64, string $mime, string $prompt ): string {
+        $opts = get_option( AAG_OPTION, [] );
+        return self::dispatch( $b64, $mime, $prompt, $opts );
+    }
+
+    private static function dispatch( string $b64, string $mime, string $prompt, array $opts ): string {
+        $provider = $opts['provider'] ?? 'gemini';
         switch ( $provider ) {
-            case 'openai':
-                return self::call_openai( $image_url, $prompt, $opts );
-            case 'claude':
-                return self::call_claude( $image_url, $prompt, $opts );
+            case 'openai': return self::call_openai( $b64, $mime, $prompt, $opts );
+            case 'claude': return self::call_claude( $b64, $mime, $prompt, $opts );
             case 'gemini':
-            default:
-                return self::call_gemini( $image_url, $prompt, $opts );
+            default:       return self::call_gemini( $b64, $mime, $prompt, $opts );
         }
     }
 
-    // ── Google Gemini ──────────────────────────────────────────
-    private static function call_gemini( string $image_url, string $prompt, array $opts ): string {
+    // ── Google Gemini ─────────────────────────────────────────
+    private static function call_gemini( string $b64, string $mime, string $prompt, array $opts ): string {
         $api_key = $opts['gemini_key'] ?? '';
         $model   = $opts['gemini_model'] ?? 'gemini-2.5-flash';
 
         if ( empty( $api_key ) ) throw new Exception( 'Gemini API-Key fehlt.' );
-
-        $image_data = self::fetch_image_base64( $image_url );
-        $mime       = $image_data['mime'];
-        $b64        = $image_data['data'];
 
         $body = [
             'system_instruction' => [ 'parts' => [ [ 'text' => $prompt ] ] ],
@@ -47,12 +51,14 @@ class AAG_API_Handler {
             ?? throw new Exception( 'Gemini: Keine Antwort.' );
     }
 
-    // ── OpenAI ────────────────────────────────────────────────
-    private static function call_openai( string $image_url, string $prompt, array $opts ): string {
+    // ── OpenAI ───────────────────────────────────────────────
+    private static function call_openai( string $b64, string $mime, string $prompt, array $opts ): string {
         $api_key = $opts['openai_key'] ?? '';
         $model   = $opts['openai_model'] ?? 'gpt-4o-mini';
 
         if ( empty( $api_key ) ) throw new Exception( 'OpenAI API-Key fehlt.' );
+
+        $data_url = "data:{$mime};base64,{$b64}";
 
         $body = [
             'model'      => $model,
@@ -61,7 +67,7 @@ class AAG_API_Handler {
                 'role'    => 'user',
                 'content' => [
                     [ 'type' => 'text',      'text'      => $prompt . "\n\nGenerate the alt text now." ],
-                    [ 'type' => 'image_url', 'image_url' => [ 'url' => $image_url, 'detail' => 'low' ] ],
+                    [ 'type' => 'image_url', 'image_url' => [ 'url' => $data_url, 'detail' => 'low' ] ],
                 ],
             ] ],
         ];
@@ -76,14 +82,12 @@ class AAG_API_Handler {
             ?? throw new Exception( 'OpenAI: Keine Antwort.' );
     }
 
-    // ── Anthropic Claude ──────────────────────────────────────
-    private static function call_claude( string $image_url, string $prompt, array $opts ): string {
+    // ── Anthropic Claude ─────────────────────────────────────
+    private static function call_claude( string $b64, string $mime, string $prompt, array $opts ): string {
         $api_key = $opts['claude_key'] ?? '';
         $model   = $opts['claude_model'] ?? 'claude-haiku-4-5-20251001';
 
         if ( empty( $api_key ) ) throw new Exception( 'Claude API-Key fehlt.' );
-
-        $image_data = self::fetch_image_base64( $image_url );
 
         $body = [
             'model'      => $model,
@@ -94,8 +98,8 @@ class AAG_API_Handler {
                 'content' => [
                     [ 'type' => 'image', 'source' => [
                         'type'       => 'base64',
-                        'media_type' => $image_data['mime'],
-                        'data'       => $image_data['data'],
+                        'media_type' => $mime,
+                        'data'       => $b64,
                     ] ],
                     [ 'type' => 'text', 'text' => 'Generate the alt text now.' ],
                 ],
@@ -115,7 +119,7 @@ class AAG_API_Handler {
             ?? throw new Exception( 'Claude: Keine Antwort.' );
     }
 
-    // ── Helpers ───────────────────────────────────────────────
+    // ── Helpers ──────────────────────────────────────────────
     private static function post( string $url, array $body, array $extra_headers ): array {
         $headers = array_merge(
             [ 'Content-Type' => 'application/json' ],
