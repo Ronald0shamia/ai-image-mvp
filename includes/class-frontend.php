@@ -13,13 +13,7 @@ class AAG_Frontend {
     public static function enqueue_assets() {
         global $post;
         if ( ! is_a( $post, 'WP_Post' ) || ! has_shortcode( $post->post_content, 'aag_preview' ) ) return;
-
-        wp_enqueue_style(
-            'aag-frontend-shortcode',
-            AAG_URL . 'assets/frontend-shortcode.css',
-            [],
-            AAG_VERSION
-        );
+        wp_enqueue_style( 'aag-frontend-shortcode', AAG_URL . 'assets/frontend-shortcode.css', [], AAG_VERSION );
     }
 
     public static function render_shortcode( $atts ): string {
@@ -33,96 +27,114 @@ class AAG_Frontend {
         $ad_image_url = $opts['ad_image_url'] ?? '';
         $ad_link      = $opts['ad_link']      ?? '';
         $ad_html      = $opts['ad_html']      ?? '';
+        $popup_delay  = intval( $opts['ad_popup_delay'] ?? 0 ); // Sekunden bis Popup sich schließt (0 = manuell)
         $nonce        = wp_create_nonce( 'aag_frontend_nonce' );
+        $uid          = 'aag' . uniqid();
+
+        // Ad-Inhalt aufbauen
+        $ad_content = '';
+        if ( $ad_type === 'image' && $ad_image_url ) {
+            $ad_content = $ad_link
+                ? '<a href="' . esc_url( $ad_link ) . '" target="_blank" rel="noopener sponsored"><img src="' . esc_url( $ad_image_url ) . '" alt="Werbung" class="aag-popup-ad-img"></a>'
+                : '<img src="' . esc_url( $ad_image_url ) . '" alt="Werbung" class="aag-popup-ad-img">';
+        } elseif ( $ad_type === 'html' && $ad_html ) {
+            $ad_content = $ad_html;
+        } else {
+            $ad_content = '<div class="aag-popup-ad-placeholder"><span>Hier könnte Ihre Werbung stehen</span></div>';
+        }
 
         ob_start();
         ?>
-        <div class="aag-sc-wrapper" id="aag-sc-<?php echo uniqid(); ?>">
+        <div class="aag-sc-wrapper" id="<?php echo esc_attr( $uid ); ?>">
 
             <h3 class="aag-sc-title"><?php echo esc_html( $atts['title'] ); ?></h3>
 
-            <!-- ── Upload-Bereich ── -->
-            <div class="aag-sc-upload" id="aag-upload-area">
+            <!-- Upload -->
+            <div class="aag-sc-upload" id="<?php echo $uid; ?>-upload">
                 <div class="aag-sc-upload-icon">🖼️</div>
                 <p class="aag-sc-upload-label">Bild hier hinziehen oder klicken zum Auswählen</p>
                 <p class="aag-sc-upload-hint">JPG, PNG, WebP — max. 5 MB</p>
-                <input type="file" id="aag-file-input" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none">
+                <input type="file" id="<?php echo $uid; ?>-file" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none">
             </div>
 
-            <!-- ── Vorschau nach Auswahl ── -->
-            <div class="aag-sc-preview" id="aag-preview" style="display:none">
-                <img id="aag-preview-img" src="" alt="Vorschau">
-                <button type="button" class="aag-sc-btn-remove" id="aag-btn-remove">✕ Anderes Bild wählen</button>
+            <!-- Vorschau -->
+            <div class="aag-sc-preview" id="<?php echo $uid; ?>-preview" style="display:none">
+                <img id="<?php echo $uid; ?>-img" src="" alt="Vorschau">
+                <button type="button" class="aag-sc-btn-remove" id="<?php echo $uid; ?>-remove">✕ Anderes Bild wählen</button>
             </div>
 
-            <!-- ── Analyse-Button ── -->
+            <!-- Button -->
             <div class="aag-sc-action">
-                <button type="button" class="aag-sc-btn-analyze" id="aag-btn-analyze" disabled>
+                <button type="button" class="aag-sc-btn-analyze" id="<?php echo $uid; ?>-analyze" disabled>
                     ✨ <?php echo esc_html( $atts['button_text'] ); ?>
                 </button>
             </div>
 
-            <!-- ── Werbeanzeige (während Analyse) ── -->
-            <div class="aag-sc-ad" id="aag-ad-container" style="display:none">
-                <span class="aag-sc-ad-label">Anzeige</span>
-                <div class="aag-sc-ad-content">
-                    <?php if ( $ad_type === 'image' && $ad_image_url ) : ?>
-                        <?php if ( $ad_link ) : ?><a href="<?php echo esc_url( $ad_link ); ?>" target="_blank" rel="noopener sponsored"><?php endif; ?>
-                        <img src="<?php echo esc_url( $ad_image_url ); ?>" alt="Werbung" class="aag-sc-ad-img">
-                        <?php if ( $ad_link ) : ?></a><?php endif; ?>
-                    <?php elseif ( $ad_type === 'html' && $ad_html ) : ?>
-                        <?php echo $ad_html; ?>
-                    <?php else : ?>
-                        <div class="aag-sc-ad-placeholder">
-                            <span>Hier könnte Ihre Werbung stehen</span>
-                        </div>
-                    <?php endif; ?>
-                </div>
-                <div class="aag-sc-loader">
-                    <div class="aag-sc-spinner"></div>
-                    <span>KI analysiert das Bild…</span>
-                </div>
-            </div>
-
-            <!-- ── Ergebnis ── -->
-            <div class="aag-sc-result" id="aag-result" style="display:none">
+            <!-- Ergebnis -->
+            <div class="aag-sc-result" id="<?php echo $uid; ?>-result" style="display:none">
                 <div class="aag-sc-result-header">
                     <span class="aag-sc-result-icon">✅</span>
                     <strong>Generierter Alt-Text</strong>
                 </div>
-                <div class="aag-sc-result-text" id="aag-result-text"></div>
+                <div class="aag-sc-result-text" id="<?php echo $uid; ?>-result-text"></div>
                 <div class="aag-sc-result-actions">
-                    <button type="button" class="aag-sc-btn-copy" id="aag-btn-copy">📋 Kopieren</button>
-                    <button type="button" class="aag-sc-btn-reset" id="aag-btn-reset">🔄 Neues Bild</button>
+                    <button type="button" class="aag-sc-btn-copy" id="<?php echo $uid; ?>-copy">📋 Kopieren</button>
+                    <button type="button" class="aag-sc-btn-reset" id="<?php echo $uid; ?>-reset">🔄 Neues Bild</button>
                 </div>
-                <p class="aag-sc-result-hint">
-                    Füge diesen Text als <code>alt=""</code> Attribut in dein HTML-Bild-Tag ein.
-                </p>
+                <p class="aag-sc-result-hint">Füge diesen Text als <code>alt=""</code> Attribut in dein HTML-Bild-Tag ein.</p>
             </div>
 
-            <!-- ── Fehler ── -->
-            <div class="aag-sc-error" id="aag-error" style="display:none"></div>
+            <!-- Fehler -->
+            <div class="aag-sc-error" id="<?php echo $uid; ?>-error" style="display:none"></div>
 
+        </div>
+
+        <!-- ── AD POPUP (außerhalb des Wrappers, global im Body) ── -->
+        <div class="aag-popup-overlay" id="<?php echo $uid; ?>-popup" aria-hidden="true" role="dialog" aria-modal="true">
+            <div class="aag-popup-box">
+                <div class="aag-popup-header">
+                    <span class="aag-popup-label">Anzeige</span>
+                    <div class="aag-popup-countdown" id="<?php echo $uid; ?>-countdown" style="display:none"></div>
+                    <button type="button" class="aag-popup-close" id="<?php echo $uid; ?>-close" aria-label="Schließen">✕</button>
+                </div>
+                <div class="aag-popup-ad-content">
+                    <?php echo $ad_content; ?>
+                </div>
+                <div class="aag-popup-loader">
+                    <div class="aag-popup-spinner"></div>
+                    <span>KI analysiert das Bild…</span>
+                </div>
+            </div>
         </div>
 
         <script>
         (function () {
-            var uploadArea  = document.getElementById('aag-upload-area');
-            var fileInput   = document.getElementById('aag-file-input');
-            var preview     = document.getElementById('aag-preview');
-            var previewImg  = document.getElementById('aag-preview-img');
-            var btnRemove   = document.getElementById('aag-btn-remove');
-            var btnAnalyze  = document.getElementById('aag-btn-analyze');
-            var adContainer = document.getElementById('aag-ad-container');
-            var resultBox   = document.getElementById('aag-result');
-            var resultText  = document.getElementById('aag-result-text');
-            var btnCopy     = document.getElementById('aag-btn-copy');
-            var btnReset    = document.getElementById('aag-btn-reset');
-            var errorBox    = document.getElementById('aag-error');
-            var selectedFile = null;
+            var uid         = '<?php echo esc_js( $uid ); ?>';
+            var ajaxUrl     = '<?php echo esc_url( admin_url('admin-ajax.php') ); ?>';
+            var nonce       = '<?php echo esc_js( $nonce ); ?>';
+            var popupDelay  = <?php echo intval( $popup_delay ); ?>;
 
+            var wrap        = document.getElementById(uid);
+            var uploadArea  = document.getElementById(uid + '-upload');
+            var fileInput   = document.getElementById(uid + '-file');
+            var preview     = document.getElementById(uid + '-preview');
+            var previewImg  = document.getElementById(uid + '-img');
+            var btnRemove   = document.getElementById(uid + '-remove');
+            var btnAnalyze  = document.getElementById(uid + '-analyze');
+            var resultBox   = document.getElementById(uid + '-result');
+            var resultText  = document.getElementById(uid + '-result-text');
+            var btnCopy     = document.getElementById(uid + '-copy');
+            var btnReset    = document.getElementById(uid + '-reset');
+            var errorBox    = document.getElementById(uid + '-error');
+            var popup       = document.getElementById(uid + '-popup');
+            var popupClose  = document.getElementById(uid + '-close');
+            var countdown   = document.getElementById(uid + '-countdown');
+            var selectedFile = null;
+            var countdownTimer = null;
+
+            // ── Upload ──
             uploadArea.addEventListener('click', function (e) {
-                if (btnRemove.contains(e.target)) return;
+                if (btnRemove && btnRemove.contains(e.target)) return;
                 fileInput.click();
             });
             uploadArea.addEventListener('dragover',  function (e) { e.preventDefault(); uploadArea.classList.add('drag-over'); });
@@ -139,77 +151,110 @@ class AAG_Frontend {
             function handleFile(file) {
                 if (!file.type.startsWith('image/')) { showError('Bitte nur Bilddateien (JPG, PNG, WebP) hochladen.'); return; }
                 if (file.size > 5 * 1024 * 1024)    { showError('Das Bild ist zu groß. Maximal 5 MB erlaubt.');       return; }
-
                 selectedFile = file;
                 var reader = new FileReader();
                 reader.onload = function (e) {
                     previewImg.src = e.target.result;
                     uploadArea.style.display = 'none';
-                    preview.style.display = 'block';
-                    btnAnalyze.disabled = false;
+                    preview.style.display    = 'block';
+                    btnAnalyze.disabled      = false;
                     hideError();
                 };
                 reader.readAsDataURL(file);
             }
 
+            // ── Reset ──
             btnRemove.addEventListener('click', resetAll);
             btnReset.addEventListener('click',  resetAll);
 
             function resetAll() {
                 selectedFile = null;
                 fileInput.value = '';
-                previewImg.src = '';
+                previewImg.src  = '';
                 uploadArea.style.display = 'block';
-                preview.style.display    = 'none';
-                adContainer.style.display = 'none';
-                resultBox.style.display   = 'none';
-                resultText.textContent    = '';
-                btnAnalyze.disabled = true;
+                preview.style.display   = 'none';
+                resultBox.style.display = 'none';
+                resultText.textContent  = '';
+                btnAnalyze.disabled     = true;
+                closePopup();
                 hideError();
             }
 
+            // ── Popup öffnen / schließen ──
+            function openPopup() {
+                popup.classList.add('active');
+                popup.setAttribute('aria-hidden', 'false');
+                document.body.style.overflow = 'hidden';
+
+                if (popupDelay > 0) {
+                    var secs = popupDelay;
+                    countdown.style.display = 'block';
+                    countdown.textContent   = 'Schließt in ' + secs + 's';
+                    countdownTimer = setInterval(function () {
+                        secs--;
+                        countdown.textContent = 'Schließt in ' + secs + 's';
+                        if (secs <= 0) { clearInterval(countdownTimer); closePopup(); }
+                    }, 1000);
+                }
+            }
+
+            function closePopup() {
+                popup.classList.remove('active');
+                popup.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
+                if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+                countdown.style.display = 'none';
+            }
+
+            popupClose.addEventListener('click', closePopup);
+            popup.addEventListener('click', function (e) {
+                if (e.target === popup) closePopup(); // Klick auf Overlay schließt
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') closePopup();
+            });
+
+            // ── Analyse starten ──
             btnAnalyze.addEventListener('click', function () {
                 if (!selectedFile) return;
                 btnAnalyze.disabled = true;
-                adContainer.style.display = 'block';
-                resultBox.style.display   = 'none';
+                resultBox.style.display = 'none';
                 hideError();
+                openPopup(); // Popup sofort zeigen
 
                 var reader = new FileReader();
                 reader.onload = function (e) {
                     var base64   = e.target.result.split(',')[1];
                     var mimeType = selectedFile.type;
-
                     var formData = new FormData();
                     formData.append('action',     'aag_frontend_generate');
-                    formData.append('nonce',      '<?php echo esc_js( $nonce ); ?>');
+                    formData.append('nonce',      nonce);
                     formData.append('image_data', base64);
                     formData.append('mime_type',  mimeType);
 
-                    fetch('<?php echo esc_url( admin_url('admin-ajax.php') ); ?>', {
-                        method: 'POST',
-                        body:   formData,
-                    })
+                    fetch(ajaxUrl, { method: 'POST', body: formData })
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
-                        adContainer.style.display = 'none';
+                        closePopup();
+                        btnAnalyze.disabled = false;
                         if (data.success) {
                             resultText.textContent  = data.data.alt;
                             resultBox.style.display = 'block';
+                            resultBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                         } else {
                             showError(data.data.message || 'Fehler bei der Analyse.');
-                            btnAnalyze.disabled = false;
                         }
                     })
                     .catch(function () {
-                        adContainer.style.display = 'none';
-                        showError('Verbindungsfehler. Bitte versuche es erneut.');
+                        closePopup();
                         btnAnalyze.disabled = false;
+                        showError('Verbindungsfehler. Bitte versuche es erneut.');
                     });
                 };
                 reader.readAsDataURL(selectedFile);
             });
 
+            // ── Kopieren ──
             btnCopy.addEventListener('click', function () {
                 var text = resultText.textContent;
                 if (!text) return;
@@ -227,23 +272,20 @@ class AAG_Frontend {
         return ob_get_clean();
     }
 
-    // ── AJAX: Bild als base64 empfangen → Alt-Text generieren ──
     public static function ajax_frontend_generate() {
         if ( ! check_ajax_referer( 'aag_frontend_nonce', 'nonce', false ) ) {
             wp_send_json_error( [ 'message' => 'Sicherheitsfehler.' ] );
         }
 
-        $opts   = get_option( AAG_OPTION, [] );
-        $prompt = $opts['prompt'] ?? AAG_Alt_Generator::default_prompt();
-
+        $opts      = get_option( AAG_OPTION, [] );
+        $prompt    = $opts['prompt'] ?? AAG_Alt_Generator::default_prompt();
         $image_b64 = sanitize_text_field( $_POST['image_data'] ?? '' );
-        $mime_type = sanitize_mime_type( $_POST['mime_type'] ?? 'image/jpeg' );
+        $mime_type = sanitize_mime_type( $_POST['mime_type']   ?? 'image/jpeg' );
 
         if ( empty( $image_b64 ) ) {
             wp_send_json_error( [ 'message' => 'Kein Bild empfangen.' ] );
         }
 
-        // Temporäre URL simulieren – wir übergeben base64 direkt an den Handler
         try {
             $alt_text = AAG_API_Handler::generate_alt_from_base64( $image_b64, $mime_type, $prompt );
             $alt_text = sanitize_text_field( trim( $alt_text ) );

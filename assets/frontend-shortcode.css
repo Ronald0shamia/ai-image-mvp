@@ -175,3 +175,105 @@
     font-size: 14px;
     margin-top: 12px;
 }
+
+/* ══ AD POPUP ══════════════════════════════════════════════════ */
+.aag-popup-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 99999;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+}
+.aag-popup-overlay.active {
+    display: flex;
+    animation: aag-fadein .2s ease;
+}
+@keyframes aag-fadein { from { opacity: 0; } to { opacity: 1; } }
+
+.aag-popup-box {
+    background: #fff;
+    border-radius: 16px;
+    max-width: 520px;
+    width: 100%;
+    box-shadow: 0 24px 60px rgba(0,0,0,.25);
+    overflow: hidden;
+    animation: aag-slidein .25s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes aag-slidein { from { transform: translateY(24px) scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.aag-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px 10px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.aag-popup-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: #94a3b8;
+    font-weight: 600;
+}
+.aag-popup-countdown {
+    font-size: 12px;
+    color: #94a3b8;
+    background: #f1f5f9;
+    padding: 3px 10px;
+    border-radius: 20px;
+}
+.aag-popup-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    color: #94a3b8;
+    padding: 4px 8px;
+    border-radius: 6px;
+    line-height: 1;
+    transition: background .15s, color .15s;
+}
+.aag-popup-close:hover { background: #f1f5f9; color: #334155; }
+
+.aag-popup-ad-content {
+    padding: 20px 24px;
+    text-align: center;
+}
+.aag-popup-ad-img {
+    max-width: 100%;
+    border-radius: 10px;
+    display: block;
+    margin: 0 auto;
+}
+.aag-popup-ad-placeholder {
+    padding: 48px 24px;
+    background: #f8fafc;
+    border-radius: 10px;
+    color: #94a3b8;
+    font-size: 14px;
+    border: 2px dashed #e2e8f0;
+}
+
+.aag-popup-loader {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 14px 24px 20px;
+    border-top: 1px solid #f1f5f9;
+    color: #64748b;
+    font-size: 14px;
+}
+.aag-popup-spinner {
+    width: 18px; height: 18px;
+    border: 2px solid #e2e8f0;
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: aag-spin .75s linear infinite;
+    flex-shrink: 0;
+}
