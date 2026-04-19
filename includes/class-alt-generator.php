@@ -120,17 +120,43 @@ class AAG_Alt_Generator {
             wp_send_json_error( [ 'message' => 'Bild nicht gefunden.' ] );
         }
 
-        $opts   = get_option( AAG_OPTION, [] );
-        $prompt = $opts['prompt'] ?? self::default_prompt();
+        $opts     = get_option( AAG_OPTION, [] );
+        $prompt   = $opts['prompt'] ?? self::default_prompt();
+        $language = $opts['language'] ?? 'auto';
+        $prompt   = self::inject_language( $prompt, $language );
 
         try {
             $alt_text = AAG_API_Handler::generate_alt( $image_url, $prompt );
             $alt_text = sanitize_text_field( trim( $alt_text ) );
             update_post_meta( $attachment_id, '_wp_attachment_image_alt', $alt_text );
+
+            // Statistik
+            AAG_Stats::record( $opts['provider'] ?? 'gemini' );
+
             wp_send_json_success( [ 'alt' => $alt_text, 'attachment_id' => $attachment_id ] );
         } catch ( Exception $e ) {
             wp_send_json_error( [ 'message' => $e->getMessage() ] );
         }
+    }
+
+    public static function inject_language( string $prompt, string $lang ): string {
+        $names = [
+            'de' => 'German', 'en' => 'English', 'fr' => 'French',
+            'es' => 'Spanish', 'it' => 'Italian', 'nl' => 'Dutch',
+            'pt' => 'Portuguese', 'pl' => 'Polish', 'tr' => 'Turkish',
+            'ar' => 'Arabic', 'zh' => 'Chinese', 'ja' => 'Japanese',
+        ];
+        if ( $lang === 'auto' || ! isset( $names[ $lang ] ) ) {
+            $lang_instruction = 'Write the alt text in the same language as the website content.';
+        } else {
+            $lang_instruction = 'Write the alt text in ' . $names[ $lang ] . '.';
+        }
+        // {language} Platzhalter ersetzen falls vorhanden, sonst ans Ende
+        if ( strpos( $prompt, '{language}' ) !== false ) {
+            return str_replace( '{language}', $lang_instruction, $prompt );
+        }
+        return $prompt . "
+" . $lang_instruction;
     }
 
     public static function default_prompt(): string {
@@ -139,7 +165,7 @@ class AAG_Alt_Generator {
 - Describes the image accurately
 - Includes relevant keywords naturally
 - Does NOT start with "image of" or "photo of"
-- Is in the same language as the website content
+{language}
 Return ONLY the alt text, nothing else.';
     }
 }

@@ -279,6 +279,7 @@ class AAG_Frontend {
 
         $opts      = get_option( AAG_OPTION, [] );
         $prompt    = $opts['prompt'] ?? AAG_Alt_Generator::default_prompt();
+        $prompt    = AAG_Alt_Generator::inject_language( $prompt, $opts['language'] ?? 'auto' );
         $image_b64 = sanitize_text_field( $_POST['image_data'] ?? '' );
         $mime_type = sanitize_mime_type( $_POST['mime_type']   ?? 'image/jpeg' );
 
@@ -289,6 +290,7 @@ class AAG_Frontend {
         try {
             $alt_text = AAG_API_Handler::generate_alt_from_base64( $image_b64, $mime_type, $prompt );
             $alt_text = sanitize_text_field( trim( $alt_text ) );
+            AAG_Stats::record( $opts['provider'] ?? 'gemini' );
             wp_send_json_success( [ 'alt' => $alt_text ] );
         } catch ( Exception $e ) {
             wp_send_json_error( [ 'message' => $e->getMessage() ] );

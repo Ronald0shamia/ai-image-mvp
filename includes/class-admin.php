@@ -30,6 +30,30 @@ class AAG_Admin {
             'dashicons-format-image',
             80
         );
+        add_submenu_page(
+            'ai-alt-generator',
+            'Einstellungen',
+            'Einstellungen',
+            'manage_options',
+            'ai-alt-generator',
+            [ __CLASS__, 'render_page' ]
+        );
+        add_submenu_page(
+            'ai-alt-generator',
+            'Bulk-Generator',
+            'Bulk-Generator',
+            'manage_options',
+            'ai-alt-bulk',
+            [ 'AAG_Bulk', 'render_page' ]
+        );
+        add_submenu_page(
+            'ai-alt-generator',
+            'Statistik',
+            'Statistik',
+            'manage_options',
+            'ai-alt-stats',
+            [ 'AAG_Stats', 'render_page' ]
+        );
     }
 
     public static function register_settings() {
@@ -53,11 +77,12 @@ class AAG_Admin {
         $out['ad_html']        = wp_kses_post( $in['ad_html']       ?? '' );
         $out['ad_link']        = esc_url_raw( $in['ad_link']        ?? '' );
         $out['ad_popup_delay'] = intval( $in['ad_popup_delay']      ?? 0 );
+        $out['language']       = sanitize_text_field( $in['language'] ?? 'auto' );
         return $out;
     }
 
     public static function enqueue_assets( $hook ) {
-        if ( ! in_array( $hook, [ 'toplevel_page_ai-alt-generator', 'index.php' ] ) ) return;
+        if ( ! in_array( $hook, [ 'toplevel_page_ai-alt-generator', 'index.php', 'ai-alt-text_page_ai-alt-bulk', 'ai-alt-text_page_ai-alt-stats' ] ) ) return;
         wp_enqueue_style(  'aag-admin', AAG_URL . 'assets/admin.css', [], AAG_VERSION );
         if ( $hook === 'toplevel_page_ai-alt-generator' ) {
             wp_enqueue_media();
@@ -95,11 +120,27 @@ class AAG_Admin {
                 <?php endif; ?>
             </div>
 
+            <!-- Stats-Vorschau -->
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
+                <?php
+                $dw_total  = AAG_Stats::get_total();
+                $dw_today  = AAG_Stats::get_today();
+                $dw_last30 = AAG_Stats::get_last_30_days_total();
+                $dw_stats  = [ 'Gesamt' => $dw_total, 'Heute' => $dw_today, '30 Tage' => $dw_last30 ];
+                foreach ( $dw_stats as $label => $val ) : ?>
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;text-align:center">
+                    <span style="display:block;font-size:22px;font-weight:700;color:#1e293b"><?php echo number_format($val); ?></span>
+                    <span style="font-size:11px;color:#94a3b8;text-transform:uppercase"><?php echo $label; ?></span>
+                </div>
+                <?php endforeach; ?>
+            </div>
+
             <!-- Kurzanleitung -->
             <ul class="aag-dw-list">
                 <li>📁 <strong>Medienbibliothek</strong> → Bild öffnen → <em>Alt-Text generieren</em></li>
                 <li>🖊️ <strong>Block-Editor</strong> → Bild-Block auswählen → Button klicken</li>
                 <li>🌐 Shortcode <code>[aag_preview]</code> für das Frontend</li>
+                <li>⚡ <a href="<?php echo esc_url( admin_url('admin.php?page=ai-alt-bulk') ); ?>">Bulk-Generator</a> → alle Bilder auf einmal</li>
             </ul>
 
             <!-- Plugin-eigene Werbung -->
@@ -248,17 +289,56 @@ class AAG_Admin {
                             <?php endforeach; ?>
                         </div>
 
-                        <!-- PROMPT -->
+                        <!-- SPRACHE + PROMPT -->
                         <div class="aag-card">
-                            <h2>💬 Standard-Prompt</h2>
-                            <p class="description">Wird bei jeder Analyse als Anweisung an die KI gesendet.</p>
+                            <h2>🌐 Sprache & Prompt</h2>
+                            <table class="form-table" style="margin-bottom:0">
+                                <tr>
+                                    <th><label for="aag_language">Alt-Text Sprache</label></th>
+                                    <td>
+                                        <select name="<?php echo AAG_OPTION; ?>[language]" id="aag_language" class="regular-text">
+                                            <?php
+                                            $languages = [
+                                                'auto' => 'Automatisch (Website-Sprache)',
+                                                'de'   => '🇩🇪 Deutsch',
+                                                'en'   => '🇬🇧 English',
+                                                'fr'   => '🇫🇷 Français',
+                                                'es'   => '🇪🇸 Español',
+                                                'it'   => '🇮🇹 Italiano',
+                                                'nl'   => '🇳🇱 Nederlands',
+                                                'pt'   => '🇵🇹 Português',
+                                                'pl'   => '🇵🇱 Polski',
+                                                'tr'   => '🇹🇷 Türkçe',
+                                                'ar'   => '🇸🇦 العربية',
+                                                'zh'   => '🇨🇳 中文',
+                                                'ja'   => '🇯🇵 日本語',
+                                            ];
+                                            $current_lang = $opts['language'] ?? 'auto';
+                                            foreach ( $languages as $code => $label ) :
+                                            ?>
+                                                <option value="<?php echo esc_attr($code); ?>" <?php selected($current_lang, $code); ?>>
+                                                    <?php echo esc_html($label); ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <p class="description">In welcher Sprache soll der Alt-Text generiert werden?</p>
+                                    </td>
+                                </tr>
+                            </table>
+                            <hr style="border:none;border-top:1px solid #f1f5f9;margin:16px 0">
+                            <p class="description">Anweisung die bei jeder Analyse an die KI gesendet wird.</p>
                             <textarea name="<?php echo AAG_OPTION; ?>[prompt]"
                                       rows="10" class="large-text code aag-prompt-editor"
                             ><?php echo esc_textarea( $opts['prompt'] ?? AAG_Alt_Generator::default_prompt() ); ?></textarea>
-                            <button type="button" class="button aag-reset-prompt"
-                                    data-default="<?php echo esc_attr( AAG_Alt_Generator::default_prompt() ); ?>">
-                                ↺ Standard wiederherstellen
-                            </button>
+                            <div style="display:flex;gap:10px;align-items:center;margin-top:8px">
+                                <button type="button" class="button aag-reset-prompt"
+                                        data-default="<?php echo esc_attr( AAG_Alt_Generator::default_prompt() ); ?>">
+                                    ↺ Standard wiederherstellen
+                                </button>
+                                <span style="font-size:12px;color:#94a3b8">
+                                    Tipp: Schreibe <code>{language}</code> im Prompt — wird durch die gewählte Sprache ersetzt.
+                                </span>
+                            </div>
                         </div>
 
                         <!-- POPUP-AD EINSTELLUNGEN -->
