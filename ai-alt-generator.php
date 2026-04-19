@@ -1,10 +1,10 @@
 <?php
 /**
  * Plugin Name: AI Alt Text Generator
- * Plugin URI:  https://example.com
+ * Plugin URI:  https://mrs-dev.com/
  * Description: Generiert SEO-optimierte Alt-Attribute mit KI (OpenAI, Gemini, Claude) — in der Medienbibliothek, im Block-Editor und per Shortcode im Frontend.
  * Version:     2.1.0
- * Author:      Your Name
+ * Author:      Raeed Shamia
  * License:     GPL2
  * Text Domain: ai-alt-gen
  */

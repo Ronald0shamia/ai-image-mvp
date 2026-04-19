@@ -6,8 +6,8 @@ class AAG_Admin {
     // Plugin-eigene Werbeanzeige — hier kannst du deine eigene Ad hinterlegen
     // die Nutzern des Plugins im Dashboard angezeigt wird.
     const PLUGIN_AD = [
-        'image'   => '', // URL zu deinem Werbebild — z.B. 'https://deine-domain.de/banner.jpg'
-        'link'    => '', // Ziel-URL
+        'image'   => 'https://mrs-dev.com/wp-content/uploads/2025/12/Raeed.pdf-e1748542394357.webp', // URL zu deinem Werbebild — z.B. 'https://deine-domain.de/banner.jpg'
+        'link'    => 'https://mrs-dev.com/', // Ziel-URL
         'title'   => 'Mehr von uns',
         'text'    => 'Entdecke unsere anderen WordPress-Plugins für noch mehr SEO-Power.',
         'cta'     => 'Jetzt entdecken →',
