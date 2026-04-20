@@ -6,8 +6,8 @@ class AAG_Admin {
     // Plugin-eigene Werbeanzeige — hier kannst du deine eigene Ad hinterlegen
     // die Nutzern des Plugins im Dashboard angezeigt wird.
     const PLUGIN_AD = [
-        'image'   => 'https://mrs-dev.com/wp-content/uploads/2025/12/Raeed.pdf-e1748542394357.webp', // URL zu deinem Werbebild — z.B. 'https://deine-domain.de/banner.jpg'
-        'link'    => 'https://mrs-dev.com/', // Ziel-URL
+        'image'   => '', // URL zu deinem Werbebild — z.B. 'https://deine-domain.de/banner.jpg'
+        'link'    => '', // Ziel-URL
         'title'   => 'Mehr von uns',
         'text'    => 'Entdecke unsere anderen WordPress-Plugins für noch mehr SEO-Power.',
         'cta'     => 'Jetzt entdecken →',
@@ -54,6 +54,14 @@ class AAG_Admin {
             'ai-alt-stats',
             [ 'AAG_Stats', 'render_page' ]
         );
+        add_submenu_page(
+            'ai-alt-generator',
+            'Bild-Verwendung',
+            'Bild-Verwendung',
+            'manage_options',
+            'ai-alt-usage',
+            [ 'AAG_Usage_Tracker', 'render_page' ]
+        );
     }
 
     public static function register_settings() {
@@ -82,7 +90,7 @@ class AAG_Admin {
     }
 
     public static function enqueue_assets( $hook ) {
-        if ( ! in_array( $hook, [ 'toplevel_page_ai-alt-generator', 'index.php', 'ai-alt-text_page_ai-alt-bulk', 'ai-alt-text_page_ai-alt-stats' ] ) ) return;
+        if ( ! in_array( $hook, [ 'toplevel_page_ai-alt-generator', 'index.php', 'ai-alt-text_page_ai-alt-bulk', 'ai-alt-text_page_ai-alt-stats', 'ai-alt-text_page_ai-alt-usage', 'upload.php' ] ) ) return;
         wp_enqueue_style(  'aag-admin', AAG_URL . 'assets/admin.css', [], AAG_VERSION );
         if ( $hook === 'toplevel_page_ai-alt-generator' ) {
             wp_enqueue_media();
@@ -141,6 +149,7 @@ class AAG_Admin {
                 <li>🖊️ <strong>Block-Editor</strong> → Bild-Block auswählen → Button klicken</li>
                 <li>🌐 Shortcode <code>[aag_preview]</code> für das Frontend</li>
                 <li>⚡ <a href="<?php echo esc_url( admin_url('admin.php?page=ai-alt-bulk') ); ?>">Bulk-Generator</a> → alle Bilder auf einmal</li>
+                <li>📍 <a href="<?php echo esc_url( admin_url('admin.php?page=ai-alt-usage') ); ?>">Bild-Verwendung</a> → wo wird welches Bild genutzt</li>
             </ul>
 
             <!-- Plugin-eigene Werbung -->
