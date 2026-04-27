@@ -1,16 +1,16 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-class AAG_Admin {
+class MSS_Admin {
 
     // Plugin-eigene Werbeanzeige — hier kannst du deine eigene Ad hinterlegen
     // die Nutzern des Plugins im Dashboard angezeigt wird.
     const PLUGIN_AD = [
-        'image'   => '', // URL zu deinem Werbebild — z.B. 'https://deine-domain.de/banner.jpg'
-        'link'    => '', // Ziel-URL
-        'title'   => 'Mehr von uns',
-        'text'    => 'Entdecke unsere anderen WordPress-Plugins für noch mehr SEO-Power.',
-        'cta'     => 'Jetzt entdecken →',
+        'image'   => 'https://mrs-dev.com/wp-content/uploads/2025/05/cropped-IMG_0878.png',
+        'link'    => 'https://mrs-dev.com/',
+        'title'   => 'MRS Dev — WordPress Experten',
+        'text'    => 'Professionelle WordPress-Entwicklung, SEO & Speed-Optimierung von Raeed Shamia.',
+        'cta'     => 'mrs-dev.com besuchen →',
     ];
 
     public static function init() {
@@ -22,12 +22,12 @@ class AAG_Admin {
 
     public static function add_menu() {
         add_menu_page(
-            'AI Alt-Text Generator',
-            'AI Alt-Text',
+            'MRS SEO & Speed',
+            'MRS SEO & Speed',
             'manage_options',
             'ai-alt-generator',
             [ __CLASS__, 'render_page' ],
-            'dashicons-format-image',
+            'dashicons-superhero',
             80
         );
         add_submenu_page(
@@ -61,6 +61,30 @@ class AAG_Admin {
             'manage_options',
             'ai-alt-usage',
             [ 'AAG_Usage_Tracker', 'render_page' ]
+        );
+        add_submenu_page(
+            'ai-alt-generator',
+            '⚡ PageSpeed Scan',
+            '⚡ PageSpeed Scan',
+            'manage_options',
+            'mss-pagespeed',
+            [ 'MSS_PageSpeed', 'render_page' ]
+        );
+        add_submenu_page(
+            'ai-alt-generator',
+            '🖼 Bilder optimieren',
+            '🖼 Bilder optimieren',
+            'manage_options',
+            'mss-image-optimizer',
+            [ 'MSS_Image_Optimizer', 'render_page' ]
+        );
+        add_submenu_page(
+            'ai-alt-generator',
+            '📝 Meta SEO Fixes',
+            '📝 Meta SEO Fixes',
+            'manage_options',
+            'mss-meta-seo',
+            [ 'MSS_Meta_SEO', 'render_page' ]
         );
     }
 
@@ -176,6 +200,29 @@ class AAG_Admin {
             </div>
             <?php endif; ?>
 
+            <!-- PageSpeed Scores -->
+            <?php $ps = MSS_PageSpeed::get_last_scores(); if ($ps) : ?>
+            <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f1f5f9">
+                <p style="font-size:11px;color:#94a3b8;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em">⚡ Letzter PageSpeed-Scan</p>
+                <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px">
+                    <?php
+                    $sc = ['Performance'=>$ps['performance'],'SEO'=>$ps['seo'],'Accessibility'=>$ps['accessibility'],'Best Practices'=>$ps['best_practices']];
+                    foreach($sc as $lbl=>$val):
+                        $c = $val>=90?'#15803d':($val>=50?'#b45309':'#dc2626');
+                    ?>
+                    <div style="background:#f8fafc;border-radius:6px;padding:6px 8px;display:flex;justify-content:space-between;align-items:center">
+                        <span style="font-size:11px;color:#64748b"><?php echo $lbl;?></span>
+                        <span style="font-size:14px;font-weight:700;color:<?php echo $c;?>"><?php echo $val;?></span>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <p style="font-size:10px;color:#94a3b8;margin:6px 0 0">
+                    Gescannt: <?php echo esc_html($ps['scanned_at']); ?>
+                    — <a href="<?php echo esc_url(admin_url('admin.php?page=mss-pagespeed'));?>">Neu scannen</a>
+                </p>
+            </div>
+            <?php endif; ?>
+
             <a href="<?php echo esc_url( admin_url( 'admin.php?page=ai-alt-generator' ) ); ?>" class="aag-dw-settings-link">
                 ⚙️ Plugin-Einstellungen öffnen
             </a>
@@ -234,8 +281,8 @@ class AAG_Admin {
         ?>
         <div class="wrap aag-wrap">
             <h1 class="aag-page-title">
-                <span class="dashicons dashicons-format-image"></span>
-                AI Alt-Text Generator
+                <span class="dashicons dashicons-superhero"></span>
+                MRS SEO & Speed
             </h1>
             <?php settings_errors(); ?>
 
