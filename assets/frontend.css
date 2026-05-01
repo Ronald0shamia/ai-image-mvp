@@ -3,7 +3,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: #6366f1;
+    background: #2563eb;
     color: #fff !important;
     border: none !important;
     border-radius: 6px;
@@ -13,20 +13,8 @@
     transition: background .15s, opacity .15s;
 }
 .aag-generate-btn:hover,
-.aag-media-btn:hover {
-    background: #4f46e5 !important;
-    color: #fff !important;
-}
+.aag-media-btn:hover { background: #1d4ed8 !important; color: #fff !important; }
 .aag-generate-btn:disabled,
-.aag-media-btn:disabled {
-    opacity: .6;
-    cursor: not-allowed;
-}
-.aag-btn-icon { font-size: 14px; }
+.aag-media-btn:disabled { opacity: .6; cursor: not-allowed; }
 .aag-status,
-.aag-media-status {
-    display: block;
-    font-size: 12px;
-    margin-top: 5px;
-    line-height: 1.4;
-}
+.aag-media-status { display: block; font-size: 12px; margin-top: 5px; line-height: 1.4; }
