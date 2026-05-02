@@ -93,81 +93,128 @@ class MSS_Admin {
         $name_map  = array( 'gemini' => 'Google Gemini', 'openai' => 'OpenAI', 'claude' => 'Claude' );
         $has_key   = ! empty( $opts[ $key_map[ $provider ] ?? 'gemini_key' ] );
         $prov_name = $name_map[ $provider ] ?? $provider;
-
-        $total  = AAG_Stats::get_total();
-        $today  = AAG_Stats::get_today();
-        $last30 = AAG_Stats::get_last_30_days_total();
-        $ps     = MSS_PageSpeed::get_last_scores();
-
-        $sc = function($s){ return $s>=90?'#16a34a':($s>=50?'#b45309':'#dc2626'); };
+        $total     = AAG_Stats::get_total();
+        $today     = AAG_Stats::get_today();
+        $last30    = AAG_Stats::get_last_30_days_total();
+        $ps        = MSS_PageSpeed::get_last_scores();
+        $ad        = self::PLUGIN_AD;
+        $sc        = function($s){ return $s>=90?'#16a34a':($s>=50?'#b45309':'#dc2626'); };
         ?>
-        <div class="aag-dw-wrap">
+        <style>
+        #mss_dashboard_widget .inside { padding: 0 12px 12px; }
+        .mss-dw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .mss-dw-section-head { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; margin: 0 0 8px; }
+        .mss-dw-stat-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; margin-bottom: 14px; }
+        .mss-dw-stat { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 8px; text-align: center; }
+        .mss-dw-stat-val { display: block; font-size: 22px; font-weight: 700; color: #0f172a; line-height: 1; margin-bottom: 3px; }
+        .mss-dw-stat-lbl { display: block; font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; }
+        .mss-dw-ps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 8px; }
+        .mss-dw-ps-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; }
+        .mss-dw-ps-lbl { font-size: 11px; color: #64748b; }
+        .mss-dw-ps-val { font-size: 14px; font-weight: 700; }
+        .mss-dw-links { list-style: none; margin: 0; padding: 0; }
+        .mss-dw-links li { border-bottom: 1px solid #f1f5f9; }
+        .mss-dw-links li:last-child { border-bottom: none; }
+        .mss-dw-links a { display: flex; align-items: center; gap: 6px; padding: 6px 0; font-size: 12px; color: #2563eb; text-decoration: none; font-weight: 500; }
+        .mss-dw-links a:hover { color: #1d4ed8; }
+        .mss-dw-links a::before { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #cbd5e1; flex-shrink: 0; }
+        .mss-dw-status-bar { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 7px; font-size: 12px; font-weight: 500; margin-bottom: 14px; }
+        .mss-dw-status-bar.ok   { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+        .mss-dw-status-bar.warn { background: #fff7ed; color: #b45309; border: 1px solid #fde68a; }
+        .mss-dw-status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        .mss-dw-status-bar.ok   .mss-dw-status-dot { background: #16a34a; }
+        .mss-dw-status-bar.warn .mss-dw-status-dot { background: #b45309; }
+        .mss-dw-ad-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center; margin-top: 14px; }
+        .mss-dw-ad-box img { width: 100%; border-radius: 5px; display: block; margin-bottom: 8px; }
+        .mss-dw-ad-box strong { display: block; font-size: 12px; color: #0f172a; margin-bottom: 4px; }
+        .mss-dw-ad-box p { font-size: 11px; color: #64748b; margin: 0 0 8px; line-height: 1.4; }
+        .mss-dw-ad-cta { display: inline-block; background: #2563eb; color: #fff; padding: 6px 14px; border-radius: 5px; font-size: 11px; font-weight: 600; text-decoration: none; }
+        .mss-dw-settings { display: block; text-align: center; font-size: 11px; color: #94a3b8; margin-top: 10px; text-decoration: none; border-top: 1px solid #f1f5f9; padding-top: 10px; }
+        .mss-dw-settings:hover { color: #2563eb; }
+        .mss-dw-divider { border: none; border-top: 1px solid #f1f5f9; margin: 14px 0; }
+        </style>
 
-            <div class="aag-dw-status <?php echo $has_key ? 'ok' : 'warn'; ?>">
-                <?php echo esc_html( $prov_name ); ?> &mdash;
-                <?php if ( $has_key ) : ?>
-                    API-Key gesetzt
-                <?php else : ?>
-                    API-Key fehlt &mdash;
-                    <a href="<?php echo esc_url( admin_url('admin.php?page=ai-alt-generator') ); ?>">Jetzt einrichten</a>
-                <?php endif; ?>
+        <div>
+            <!-- Status -->
+            <div class="mss-dw-status-bar <?php echo $has_key?'ok':'warn'; ?>">
+                <span class="mss-dw-status-dot"></span>
+                <span><?php echo esc_html($prov_name); ?> &mdash; <?php echo $has_key?'API-Key gesetzt':'<a href="'.esc_url(admin_url('admin.php?page=ai-alt-generator')).'" style="color:inherit;font-weight:700">API-Key fehlt &rarr;</a>'; ?></span>
             </div>
 
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
-                <?php foreach ( array( 'Gesamt' => $total, 'Heute' => $today, '30 Tage' => $last30 ) as $lbl => $val ) : ?>
-                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px;text-align:center">
-                    <span style="display:block;font-size:20px;font-weight:700;color:#0f172a"><?php echo number_format($val); ?></span>
-                    <span style="font-size:10px;color:#94a3b8;text-transform:uppercase"><?php echo $lbl; ?></span>
+            <div class="mss-dw-grid">
+
+                <!-- LINKE SPALTE -->
+                <div>
+                    <!-- Alt-Text Statistik -->
+                    <p class="mss-dw-section-head">Alt-Text Generator</p>
+                    <div class="mss-dw-stat-grid">
+                        <div class="mss-dw-stat">
+                            <span class="mss-dw-stat-val"><?php echo number_format($total); ?></span>
+                            <span class="mss-dw-stat-lbl">Gesamt</span>
+                        </div>
+                        <div class="mss-dw-stat">
+                            <span class="mss-dw-stat-val"><?php echo number_format($today); ?></span>
+                            <span class="mss-dw-stat-lbl">Heute</span>
+                        </div>
+                        <div class="mss-dw-stat">
+                            <span class="mss-dw-stat-val"><?php echo number_format($last30); ?></span>
+                            <span class="mss-dw-stat-lbl">30 Tage</span>
+                        </div>
+                    </div>
+
+                    <!-- PageSpeed -->
+                    <?php if ( $ps ) : ?>
+                    <p class="mss-dw-section-head">PageSpeed &mdash; <?php echo esc_html(substr($ps['scanned_at'],0,10)); ?></p>
+                    <div class="mss-dw-ps-grid">
+                        <?php foreach ( array('Performance'=>$ps['performance'],'SEO'=>$ps['seo'],'Accessibility'=>$ps['accessibility'],'Best Practices'=>$ps['best_practices']) as $lbl=>$val ) : ?>
+                        <div class="mss-dw-ps-item">
+                            <span class="mss-dw-ps-lbl"><?php echo $lbl; ?></span>
+                            <span class="mss-dw-ps-val" style="color:<?php echo $sc($val); ?>"><?php echo $val; ?></span>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=mss-pagespeed')); ?>"
+                       style="font-size:11px;color:#2563eb;text-decoration:none">Neu scannen &rarr;</a>
+                    <?php else : ?>
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=mss-pagespeed')); ?>"
+                       style="font-size:12px;color:#2563eb;text-decoration:none;display:block;margin-top:4px">PageSpeed-Scan starten &rarr;</a>
+                    <?php endif; ?>
                 </div>
-                <?php endforeach; ?>
-            </div>
 
-            <?php if ( $ps ) : ?>
-            <p style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin:0 0 6px">
-                Letzter PageSpeed-Scan
-            </p>
-            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:12px">
-                <?php
-                $scores = array( 'Performance' => $ps['performance'], 'SEO' => $ps['seo'], 'Accessibility' => $ps['accessibility'], 'Best Practices' => $ps['best_practices'] );
-                foreach ( $scores as $lbl => $val ) : ?>
-                <div style="background:#f8fafc;border-radius:6px;padding:5px 8px;display:flex;justify-content:space-between;align-items:center;font-size:12px">
-                    <span style="color:#64748b"><?php echo $lbl; ?></span>
-                    <strong style="color:<?php echo $sc($val); ?>"><?php echo $val; ?></strong>
+                <!-- RECHTE SPALTE: Module -->
+                <div>
+                    <p class="mss-dw-section-head">Module</p>
+                    <ul class="mss-dw-links">
+                        <li><a href="<?php echo esc_url(admin_url('upload.php')); ?>">Medienbibliothek</a></li>
+                        <li><a href="<?php echo esc_url(admin_url('admin.php?page=ai-alt-bulk')); ?>">Bulk-Generator</a></li>
+                        <li><a href="<?php echo esc_url(admin_url('admin.php?page=ai-alt-stats')); ?>">Statistik</a></li>
+                        <li><a href="<?php echo esc_url(admin_url('admin.php?page=ai-alt-usage')); ?>">Bild-Verwendung</a></li>
+                        <li><a href="<?php echo esc_url(admin_url('admin.php?page=mss-pagespeed')); ?>">PageSpeed Scan</a></li>
+                        <li><a href="<?php echo esc_url(admin_url('admin.php?page=mss-image-optimizer')); ?>">Bilder optimieren</a></li>
+                        <li><a href="<?php echo esc_url(admin_url('admin.php?page=mss-meta-seo')); ?>">Meta SEO Fixes</a></li>
+                    </ul>
                 </div>
-                <?php endforeach; ?>
-            </div>
-            <p style="font-size:10px;color:#94a3b8;margin:0 0 10px">
-                Gescannt: <?php echo esc_html($ps['scanned_at']); ?> &mdash;
-                <a href="<?php echo esc_url(admin_url('admin.php?page=mss-pagespeed')); ?>">Neu scannen</a>
-            </p>
-            <?php endif; ?>
 
-            <ul class="aag-dw-list">
-                <li><a href="<?php echo esc_url(admin_url('upload.php')); ?>">Medienbibliothek</a> &mdash; Alt-Text pro Bild generieren</li>
-                <li><a href="<?php echo esc_url(admin_url('admin.php?page=ai-alt-bulk')); ?>">Bulk-Generator</a> &mdash; Alle Bilder auf einmal</li>
-                <li><a href="<?php echo esc_url(admin_url('admin.php?page=ai-alt-usage')); ?>">Bild-Verwendung</a> &mdash; Wo wird jedes Bild genutzt?</li>
-                <li><a href="<?php echo esc_url(admin_url('admin.php?page=mss-pagespeed')); ?>">PageSpeed Scan</a> &mdash; Google Lighthouse Analyse</li>
-                <li><a href="<?php echo esc_url(admin_url('admin.php?page=mss-image-optimizer')); ?>">Bilder optimieren</a> &mdash; Komprimieren &amp; WebP</li>
-                <li><a href="<?php echo esc_url(admin_url('admin.php?page=mss-meta-seo')); ?>">Meta SEO Fixes</a> &mdash; Beschreibungen &amp; Titel</li>
-            </ul>
+            </div><!-- end .mss-dw-grid -->
 
-            <?php $ad = self::PLUGIN_AD; if ( ! empty($ad['text']) || ! empty($ad['image']) ) : ?>
-            <div class="aag-dw-ad">
+            <!-- Plugin-Ad -->
+            <?php if ( ! empty($ad['text']) || ! empty($ad['image']) ) : ?>
+            <div class="mss-dw-ad-box">
                 <?php if ( ! empty($ad['image']) ) : ?>
                 <a href="<?php echo esc_url($ad['link']); ?>" target="_blank" rel="noopener">
-                    <img src="<?php echo esc_url($ad['image']); ?>" alt="<?php echo esc_attr($ad['title']); ?>" class="aag-dw-ad-img">
+                    <img src="<?php echo esc_url($ad['image']); ?>" alt="<?php echo esc_attr($ad['title']); ?>">
                 </a>
                 <?php endif; ?>
-                <?php if ( ! empty($ad['title']) ) : ?><strong class="aag-dw-ad-title"><?php echo esc_html($ad['title']); ?></strong><?php endif; ?>
-                <?php if ( ! empty($ad['text'])  ) : ?><p class="aag-dw-ad-text"><?php echo esc_html($ad['text']); ?></p><?php endif; ?>
+                <?php if ( ! empty($ad['title']) ) : ?><strong><?php echo esc_html($ad['title']); ?></strong><?php endif; ?>
+                <?php if ( ! empty($ad['text'])  ) : ?><p><?php echo esc_html($ad['text']); ?></p><?php endif; ?>
                 <?php if ( ! empty($ad['link']) && ! empty($ad['cta']) ) : ?>
-                <a href="<?php echo esc_url($ad['link']); ?>" target="_blank" rel="noopener" class="aag-dw-ad-cta"><?php echo esc_html($ad['cta']); ?></a>
+                <a href="<?php echo esc_url($ad['link']); ?>" target="_blank" rel="noopener" class="mss-dw-ad-cta"><?php echo esc_html($ad['cta']); ?></a>
                 <?php endif; ?>
             </div>
             <?php endif; ?>
 
-            <a href="<?php echo esc_url(admin_url('admin.php?page=ai-alt-generator')); ?>" class="aag-dw-settings-link">
-                Plugin-Einstellungen
+            <a href="<?php echo esc_url(admin_url('admin.php?page=ai-alt-generator')); ?>" class="mss-dw-settings">
+                Einstellungen &rarr;
             </a>
         </div>
         <?php

@@ -8,6 +8,8 @@ class AAG_Frontend {
         add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
         add_action( 'wp_ajax_aag_frontend_generate',        array( __CLASS__, 'ajax_frontend_generate' ) );
         add_action( 'wp_ajax_nopriv_aag_frontend_generate', array( __CLASS__, 'ajax_frontend_generate' ) );
+        add_action( 'wp_ajax_aag_frontend_seo',             array( __CLASS__, 'ajax_frontend_seo' ) );
+        add_action( 'wp_ajax_nopriv_aag_frontend_seo',      array( __CLASS__, 'ajax_frontend_seo' ) );
     }
 
     public static function enqueue_assets() {
@@ -18,7 +20,7 @@ class AAG_Frontend {
 
     public static function render_shortcode( $atts ): string {
         $atts = shortcode_atts( array(
-            'title'       => 'Alt-Text Generator',
+            'title'       => 'SEO & Alt-Text Generator',
             'button_text' => 'Alt-Text generieren',
         ), $atts, 'aag_preview' );
 
@@ -33,8 +35,8 @@ class AAG_Frontend {
 
         if ( $ad_type === 'image' && $ad_image_url ) {
             $ad_content = $ad_link
-                ? '<a href="' . esc_url( $ad_link ) . '" target="_blank" rel="noopener sponsored"><img src="' . esc_url( $ad_image_url ) . '" alt="Anzeige" class="aag-popup-ad-img"></a>'
-                : '<img src="' . esc_url( $ad_image_url ) . '" alt="Anzeige" class="aag-popup-ad-img">';
+                ? '<a href="' . esc_url($ad_link) . '" target="_blank" rel="noopener sponsored"><img src="' . esc_url($ad_image_url) . '" alt="Anzeige" class="aag-popup-ad-img"></a>'
+                : '<img src="' . esc_url($ad_image_url) . '" alt="Anzeige" class="aag-popup-ad-img">';
         } elseif ( $ad_type === 'html' && $ad_html ) {
             $ad_content = $ad_html;
         } else {
@@ -43,43 +45,120 @@ class AAG_Frontend {
 
         ob_start();
         ?>
-        <div class="aag-sc-wrapper" id="<?php echo esc_attr( $uid ); ?>">
+        <div class="aag-sc-wrapper" id="<?php echo esc_attr($uid); ?>">
 
-            <h3 class="aag-sc-title"><?php echo esc_html( $atts['title'] ); ?></h3>
-
-            <div class="aag-sc-upload" id="<?php echo $uid; ?>-upload">
-                <div class="aag-sc-upload-icon">&#128444;</div>
-                <p class="aag-sc-upload-label">Bild hier ablegen oder klicken zum Auswaehlen</p>
-                <p class="aag-sc-upload-hint">JPG, PNG, WebP &mdash; max. 5 MB</p>
-                <input type="file" id="<?php echo $uid; ?>-file" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none">
+            <!-- ── TAB NAVIGATION ─────────────────────── -->
+            <div class="aag-tabs">
+                <button type="button" class="aag-tab active" data-tab="alt">Bild Alt-Text</button>
+                <button type="button" class="aag-tab" data-tab="seo">SEO Titel &amp; Beschreibung</button>
             </div>
 
-            <div class="aag-sc-preview" id="<?php echo $uid; ?>-preview" style="display:none">
-                <img id="<?php echo $uid; ?>-img" src="" alt="Vorschau">
-                <button type="button" class="aag-sc-btn-remove" id="<?php echo $uid; ?>-remove">Anderes Bild waehlen</button>
-            </div>
+            <!-- ════════════════════════════════════════
+                 TAB 1: BILD → ALT-TEXT
+            ════════════════════════════════════════ -->
+            <div class="aag-tab-panel" data-panel="alt">
 
-            <div class="aag-sc-action">
-                <button type="button" class="aag-sc-btn-analyze" id="<?php echo $uid; ?>-analyze" disabled>
-                    <?php echo esc_html( $atts['button_text'] ); ?>
-                </button>
-            </div>
-
-            <div class="aag-sc-result" id="<?php echo $uid; ?>-result" style="display:none">
-                <div class="aag-sc-result-header">
-                    <strong>Generierter Alt-Text</strong>
+                <div class="aag-sc-upload" id="<?php echo $uid; ?>-upload">
+                    <div class="aag-sc-upload-icon">&#128444;</div>
+                    <p class="aag-sc-upload-label">Bild hier ablegen oder klicken zum Auswaehlen</p>
+                    <p class="aag-sc-upload-hint">JPG, PNG, WebP &mdash; max. 5 MB</p>
+                    <input type="file" id="<?php echo $uid; ?>-file" accept="image/jpeg,image/png,image/webp,image/gif" style="display:none">
                 </div>
-                <div class="aag-sc-result-text" id="<?php echo $uid; ?>-result-text"></div>
-                <div class="aag-sc-result-actions">
-                    <button type="button" class="aag-sc-btn-copy" id="<?php echo $uid; ?>-copy">Kopieren</button>
-                    <button type="button" class="aag-sc-btn-reset" id="<?php echo $uid; ?>-reset">Neues Bild</button>
+
+                <div class="aag-sc-preview" id="<?php echo $uid; ?>-preview" style="display:none">
+                    <img id="<?php echo $uid; ?>-img" src="" alt="Vorschau">
+                    <button type="button" class="aag-sc-btn-remove" id="<?php echo $uid; ?>-remove">Anderes Bild waehlen</button>
                 </div>
-                <p class="aag-sc-result-hint">Fuege diesen Text als <code>alt=""</code> Attribut in dein Bild-Tag ein.</p>
+
+                <div class="aag-sc-action">
+                    <button type="button" class="aag-sc-btn-analyze" id="<?php echo $uid; ?>-analyze" disabled>
+                        <?php echo esc_html($atts['button_text']); ?>
+                    </button>
+                </div>
+
+                <div class="aag-sc-result" id="<?php echo $uid; ?>-result" style="display:none">
+                    <div class="aag-sc-result-header"><strong>Generierter Alt-Text</strong></div>
+                    <div class="aag-sc-result-text" id="<?php echo $uid; ?>-result-text"></div>
+                    <div class="aag-sc-result-actions">
+                        <button type="button" class="aag-sc-btn-copy" id="<?php echo $uid; ?>-copy">Kopieren</button>
+                        <button type="button" class="aag-sc-btn-reset" id="<?php echo $uid; ?>-reset">Neues Bild</button>
+                    </div>
+                    <p class="aag-sc-result-hint">Fuege diesen Text als <code>alt=""</code> in dein Bild-Tag ein.</p>
+                </div>
+
+                <div class="aag-sc-error" id="<?php echo $uid; ?>-error" style="display:none"></div>
             </div>
 
-            <div class="aag-sc-error" id="<?php echo $uid; ?>-error" style="display:none"></div>
-        </div>
+            <!-- ════════════════════════════════════════
+                 TAB 2: URL → SEO TITEL + BESCHREIBUNG
+            ════════════════════════════════════════ -->
+            <div class="aag-tab-panel" data-panel="seo" style="display:none">
 
+                <div class="aag-seo-input-wrap">
+                    <label class="aag-seo-label" for="<?php echo $uid; ?>-url">Website-URL eingeben</label>
+                    <div class="aag-seo-url-row">
+                        <input type="url"
+                               id="<?php echo $uid; ?>-url"
+                               class="aag-seo-url-input"
+                               placeholder="https://beispiel.de/meine-seite">
+                        <button type="button" class="aag-sc-btn-analyze" id="<?php echo $uid; ?>-seo-btn">
+                            SEO-Texte generieren
+                        </button>
+                    </div>
+                    <p class="aag-seo-hint">Die KI analysiert die Seite und generiert einen optimierten Titel und eine Meta Description.</p>
+                </div>
+
+                <div class="aag-sc-error" id="<?php echo $uid; ?>-seo-error" style="display:none"></div>
+
+                <div class="aag-seo-result" id="<?php echo $uid; ?>-seo-result" style="display:none">
+
+                    <!-- Titel -->
+                    <div class="aag-seo-result-block">
+                        <div class="aag-seo-result-header">
+                            <span class="aag-seo-result-label">SEO-Titel</span>
+                            <span class="aag-seo-char-count" id="<?php echo $uid; ?>-title-count">0 / 60</span>
+                        </div>
+                        <div class="aag-seo-result-text" id="<?php echo $uid; ?>-seo-title" contenteditable="true"></div>
+                        <div class="aag-seo-result-actions">
+                            <button type="button" class="aag-sc-btn-copy aag-copy-field" data-target="<?php echo $uid; ?>-seo-title">Kopieren</button>
+                            <a class="aag-sc-btn-copy aag-yoast-link"
+                               href="<?php echo esc_url(admin_url('admin.php?page=wpseo_tools&tool=bulk-editor#top#title')); ?>"
+                               target="_blank">In Yoast SEO bearbeiten</a>
+                        </div>
+                    </div>
+
+                    <!-- Meta Description -->
+                    <div class="aag-seo-result-block">
+                        <div class="aag-seo-result-header">
+                            <span class="aag-seo-result-label">Meta Description</span>
+                            <span class="aag-seo-char-count" id="<?php echo $uid; ?>-desc-count">0 / 160</span>
+                        </div>
+                        <div class="aag-seo-result-text" id="<?php echo $uid; ?>-seo-desc" contenteditable="true"></div>
+                        <div class="aag-seo-result-actions">
+                            <button type="button" class="aag-sc-btn-copy aag-copy-field" data-target="<?php echo $uid; ?>-seo-desc">Kopieren</button>
+                            <a class="aag-sc-btn-copy aag-yoast-link"
+                               href="<?php echo esc_url(admin_url('admin.php?page=wpseo_tools&tool=bulk-editor#top#description')); ?>"
+                               target="_blank">In Yoast SEO bearbeiten</a>
+                        </div>
+                    </div>
+
+                    <!-- Google-Vorschau -->
+                    <div class="aag-google-preview">
+                        <p class="aag-google-preview-label">Google-Vorschau</p>
+                        <div class="aag-google-card">
+                            <div class="aag-google-url" id="<?php echo $uid; ?>-preview-url"></div>
+                            <div class="aag-google-title" id="<?php echo $uid; ?>-preview-title"></div>
+                            <div class="aag-google-desc" id="<?php echo $uid; ?>-preview-desc"></div>
+                        </div>
+                    </div>
+
+                    <button type="button" class="aag-sc-btn-reset" id="<?php echo $uid; ?>-seo-reset" style="margin-top:12px">Neue URL analysieren</button>
+                </div>
+            </div>
+
+        </div><!-- end .aag-sc-wrapper -->
+
+        <!-- Ad Popup -->
         <div class="aag-popup-overlay" id="<?php echo $uid; ?>-popup" aria-hidden="true" role="dialog" aria-modal="true">
             <div class="aag-popup-box">
                 <div class="aag-popup-header">
@@ -90,34 +169,49 @@ class AAG_Frontend {
                 <div class="aag-popup-ad-content"><?php echo $ad_content; ?></div>
                 <div class="aag-popup-loader">
                     <div class="aag-popup-spinner"></div>
-                    <span>KI analysiert das Bild...</span>
+                    <span>KI analysiert...</span>
                 </div>
             </div>
         </div>
 
         <script>
         (function(){
-            var uid        = '<?php echo esc_js( $uid ); ?>';
-            var ajaxUrl    = '<?php echo esc_url( admin_url('admin-ajax.php') ); ?>';
-            var nonce      = '<?php echo esc_js( $nonce ); ?>';
-            var popupDelay = <?php echo intval( $popup_delay ); ?>;
+            var uid        = '<?php echo esc_js($uid); ?>';
+            var ajaxUrl    = '<?php echo esc_url(admin_url('admin-ajax.php')); ?>';
+            var nonce      = '<?php echo esc_js($nonce); ?>';
+            var popupDelay = <?php echo intval($popup_delay); ?>;
 
-            var uploadArea  = document.getElementById(uid+'-upload');
-            var fileInput   = document.getElementById(uid+'-file');
-            var preview     = document.getElementById(uid+'-preview');
-            var previewImg  = document.getElementById(uid+'-img');
-            var btnRemove   = document.getElementById(uid+'-remove');
-            var btnAnalyze  = document.getElementById(uid+'-analyze');
-            var resultBox   = document.getElementById(uid+'-result');
-            var resultText  = document.getElementById(uid+'-result-text');
-            var btnCopy     = document.getElementById(uid+'-copy');
-            var btnReset    = document.getElementById(uid+'-reset');
-            var errorBox    = document.getElementById(uid+'-error');
-            var popup       = document.getElementById(uid+'-popup');
-            var popupClose  = document.getElementById(uid+'-close');
-            var countdown   = document.getElementById(uid+'-countdown');
-            var selectedFile = null, cdTimer = null;
+            /* ── helpers ── */
+            function q(id){ return document.getElementById(id); }
+            var uploadArea = q(uid+'-upload'), fileInput = q(uid+'-file'),
+                preview    = q(uid+'-preview'), previewImg = q(uid+'-img'),
+                btnRemove  = q(uid+'-remove'),  btnAnalyze = q(uid+'-analyze'),
+                resultBox  = q(uid+'-result'),  resultText = q(uid+'-result-text'),
+                btnCopy    = q(uid+'-copy'),    btnReset   = q(uid+'-reset'),
+                errorBox   = q(uid+'-error'),
+                popup      = q(uid+'-popup'),   popupClose = q(uid+'-close'),
+                countdown  = q(uid+'-countdown'),
+                seoBtn     = q(uid+'-seo-btn'), seoUrl     = q(uid+'-url'),
+                seoError   = q(uid+'-seo-error'), seoResult = q(uid+'-seo-result'),
+                seoTitle   = q(uid+'-seo-title'), seoDesc   = q(uid+'-seo-desc'),
+                seoReset   = q(uid+'-seo-reset'),
+                titleCount = q(uid+'-title-count'), descCount  = q(uid+'-desc-count'),
+                prevUrl    = q(uid+'-preview-url'), prevTitle  = q(uid+'-preview-title'),
+                prevDesc   = q(uid+'-preview-desc'),
+                selectedFile = null, cdTimer = null;
 
+            /* ── Tab switching ── */
+            var wrapper = document.getElementById(uid);
+            wrapper.querySelectorAll('.aag-tab').forEach(function(btn){
+                btn.addEventListener('click', function(){
+                    wrapper.querySelectorAll('.aag-tab').forEach(function(b){ b.classList.remove('active'); });
+                    wrapper.querySelectorAll('.aag-tab-panel').forEach(function(p){ p.style.display='none'; });
+                    btn.classList.add('active');
+                    wrapper.querySelector('.aag-tab-panel[data-panel="'+btn.dataset.tab+'"]').style.display='block';
+                });
+            });
+
+            /* ── Upload ── */
             uploadArea.addEventListener('click', function(e){ if(!btnRemove.contains(e.target)) fileInput.click(); });
             uploadArea.addEventListener('dragover', function(e){ e.preventDefault(); uploadArea.classList.add('drag-over'); });
             uploadArea.addEventListener('dragleave', function(){ uploadArea.classList.remove('drag-over'); });
@@ -125,8 +219,8 @@ class AAG_Frontend {
             fileInput.addEventListener('change', function(){ if(this.files[0]) handleFile(this.files[0]); });
 
             function handleFile(file){
-                if(!file.type.startsWith('image/')){ showError('Bitte nur Bilddateien hochladen.'); return; }
-                if(file.size > 5*1024*1024){ showError('Datei zu gross. Maximal 5 MB.'); return; }
+                if(!file.type.startsWith('image/')){ showError(errorBox,'Bitte nur Bilddateien hochladen.'); return; }
+                if(file.size > 5*1024*1024){ showError(errorBox,'Datei zu gross. Maximal 5 MB.'); return; }
                 selectedFile = file;
                 var reader = new FileReader();
                 reader.onload = function(e){
@@ -134,77 +228,133 @@ class AAG_Frontend {
                     uploadArea.style.display = 'none';
                     preview.style.display    = 'block';
                     btnAnalyze.disabled      = false;
-                    hideError();
+                    hideError(errorBox);
                 };
                 reader.readAsDataURL(file);
             }
 
-            btnRemove.addEventListener('click', resetAll);
-            btnReset.addEventListener('click', resetAll);
-
-            function resetAll(){
-                selectedFile = null; fileInput.value = ''; previewImg.src = '';
-                uploadArea.style.display = 'block'; preview.style.display = 'none';
-                resultBox.style.display = 'none'; resultText.textContent = '';
-                btnAnalyze.disabled = true; closePopup(); hideError();
+            btnRemove.addEventListener('click', resetAlt);
+            btnReset.addEventListener('click', resetAlt);
+            function resetAlt(){
+                selectedFile = null; fileInput.value=''; previewImg.src='';
+                uploadArea.style.display='block'; preview.style.display='none';
+                resultBox.style.display='none'; resultText.textContent='';
+                btnAnalyze.disabled=true; closePopup(); hideError(errorBox);
             }
 
+            /* ── Popup ── */
             function openPopup(){
                 popup.classList.add('active'); popup.setAttribute('aria-hidden','false');
-                document.body.style.overflow = 'hidden';
-                if(popupDelay > 0){
-                    var s = popupDelay; countdown.style.display = 'block';
-                    countdown.textContent = 'Schliesst in ' + s + 's';
-                    cdTimer = setInterval(function(){ s--; countdown.textContent = 'Schliesst in ' + s + 's'; if(s<=0){ clearInterval(cdTimer); closePopup(); } }, 1000);
+                document.body.style.overflow='hidden';
+                if(popupDelay>0){
+                    var s=popupDelay; countdown.style.display='block';
+                    countdown.textContent='Schliesst in '+s+'s';
+                    cdTimer=setInterval(function(){ s--; countdown.textContent='Schliesst in '+s+'s'; if(s<=0){clearInterval(cdTimer);closePopup();} },1000);
                 }
             }
-
             function closePopup(){
                 popup.classList.remove('active'); popup.setAttribute('aria-hidden','true');
-                document.body.style.overflow = '';
-                if(cdTimer){ clearInterval(cdTimer); cdTimer = null; }
-                countdown.style.display = 'none';
+                document.body.style.overflow='';
+                if(cdTimer){clearInterval(cdTimer);cdTimer=null;}
+                countdown.style.display='none';
             }
-
             popupClose.addEventListener('click', closePopup);
             popup.addEventListener('click', function(e){ if(e.target===popup) closePopup(); });
             document.addEventListener('keydown', function(e){ if(e.key==='Escape') closePopup(); });
 
+            /* ── Alt-Text Analyse ── */
             btnAnalyze.addEventListener('click', function(){
                 if(!selectedFile) return;
-                btnAnalyze.disabled = true; resultBox.style.display = 'none'; hideError(); openPopup();
-                var reader = new FileReader();
-                reader.onload = function(e){
-                    var base64 = e.target.result.split(',')[1];
-                    var mime   = selectedFile.type;
-                    var fd = new FormData();
+                btnAnalyze.disabled=true; resultBox.style.display='none'; hideError(errorBox); openPopup();
+                var reader=new FileReader();
+                reader.onload=function(e){
+                    var base64=e.target.result.split(',')[1], mime=selectedFile.type;
+                    var fd=new FormData();
                     fd.append('action','aag_frontend_generate'); fd.append('nonce',nonce);
                     fd.append('image_data',base64); fd.append('mime_type',mime);
                     fetch(ajaxUrl,{method:'POST',body:fd})
-                    .then(function(r){ return r.json(); })
+                    .then(function(r){return r.json();})
                     .then(function(data){
-                        closePopup(); btnAnalyze.disabled = false;
-                        if(data.success){ resultText.textContent = data.data.alt; resultBox.style.display = 'block'; resultBox.scrollIntoView({behavior:'smooth',block:'nearest'}); }
-                        else showError(data.data.message||'Fehler bei der Analyse.');
-                    }).catch(function(){ closePopup(); btnAnalyze.disabled = false; showError('Verbindungsfehler.'); });
+                        closePopup(); btnAnalyze.disabled=false;
+                        if(data.success){ resultText.textContent=data.data.alt; resultBox.style.display='block'; resultBox.scrollIntoView({behavior:'smooth',block:'nearest'}); }
+                        else showError(errorBox, data.data.message||'Fehler bei der Analyse.');
+                    }).catch(function(){ closePopup(); btnAnalyze.disabled=false; showError(errorBox,'Verbindungsfehler.'); });
                 };
                 reader.readAsDataURL(selectedFile);
             });
 
             btnCopy.addEventListener('click', function(){
-                var text = resultText.textContent;
-                if(!text) return;
-                navigator.clipboard.writeText(text).then(function(){ btnCopy.textContent = 'Kopiert!'; setTimeout(function(){ btnCopy.textContent = 'Kopieren'; },2000); });
+                var text=resultText.textContent; if(!text) return;
+                navigator.clipboard.writeText(text).then(function(){ btnCopy.textContent='Kopiert!'; setTimeout(function(){ btnCopy.textContent='Kopieren'; },2000); });
             });
 
-            function showError(msg){ errorBox.textContent = msg; errorBox.style.display = 'block'; }
-            function hideError()   { errorBox.style.display = 'none'; }
+            /* ── SEO Analyse ── */
+            seoBtn.addEventListener('click', function(){
+                var url = seoUrl.value.trim();
+                if(!url){ showError(seoError,'Bitte eine URL eingeben.'); return; }
+                if(!url.startsWith('http')){ showError(seoError,'Bitte eine vollstaendige URL mit https:// eingeben.'); return; }
+                seoBtn.disabled=true; seoBtn.textContent='Wird analysiert...';
+                seoResult.style.display='none'; hideError(seoError); openPopup();
+
+                var fd=new FormData();
+                fd.append('action','aag_frontend_seo'); fd.append('nonce',nonce); fd.append('url',url);
+                fetch(ajaxUrl,{method:'POST',body:fd})
+                .then(function(r){return r.json();})
+                .then(function(data){
+                    closePopup(); seoBtn.disabled=false; seoBtn.textContent='SEO-Texte generieren';
+                    if(data.success){
+                        var d=data.data;
+                        seoTitle.textContent = d.title;
+                        seoDesc.textContent  = d.description;
+                        prevUrl.textContent  = url.replace(/^https?:\/\//,'');
+                        prevTitle.textContent= d.title;
+                        prevDesc.textContent = d.description;
+                        updateCount(seoTitle, titleCount, 60);
+                        updateCount(seoDesc,  descCount,  160);
+                        seoResult.style.display='block';
+                        seoResult.scrollIntoView({behavior:'smooth',block:'nearest'});
+                    } else showError(seoError, data.data.message||'Fehler bei der Analyse.');
+                }).catch(function(){ closePopup(); seoBtn.disabled=false; seoBtn.textContent='SEO-Texte generieren'; showError(seoError,'Verbindungsfehler.'); });
+            });
+
+            /* Live Zeichenzaehler bei Bearbeitung */
+            seoTitle.addEventListener('input', function(){ updateCount(seoTitle,titleCount,60); prevTitle.textContent=seoTitle.textContent; });
+            seoDesc.addEventListener('input',  function(){ updateCount(seoDesc, descCount, 160); prevDesc.textContent=seoDesc.textContent; });
+
+            function updateCount(el, counter, max){
+                var len=el.textContent.length;
+                counter.textContent=len+' / '+max;
+                counter.style.color=len>max?'#dc2626':(len>=Math.round(max*0.75)?'#16a34a':'#94a3b8');
+            }
+
+            /* Kopieren fuer SEO-Felder */
+            wrapper.querySelectorAll('.aag-copy-field').forEach(function(btn){
+                btn.addEventListener('click', function(){
+                    var target=document.getElementById(btn.dataset.target);
+                    if(!target) return;
+                    navigator.clipboard.writeText(target.textContent).then(function(){
+                        var orig=btn.textContent; btn.textContent='Kopiert!';
+                        setTimeout(function(){ btn.textContent=orig; },2000);
+                    });
+                });
+            });
+
+            seoReset.addEventListener('click', function(){
+                seoUrl.value=''; seoResult.style.display='none';
+                seoTitle.textContent=''; seoDesc.textContent='';
+                hideError(seoError);
+            });
+
+            /* ── Utils ── */
+            function showError(el,msg){ el.textContent=msg; el.style.display='block'; }
+            function hideError(el){ el.style.display='none'; }
         })();
         </script>
         <?php
         return ob_get_clean();
     }
 
+    /* ── AJAX: Alt-Text ──────────────────────────────────── */
     public static function ajax_frontend_generate() {
         if ( ! check_ajax_referer( 'aag_frontend_nonce', 'nonce', false ) ) {
             wp_send_json_error( array( 'message' => 'Sicherheitsfehler.' ) );
@@ -218,7 +368,6 @@ class AAG_Frontend {
         if ( empty( $image_b64 ) ) {
             wp_send_json_error( array( 'message' => 'Kein Bild empfangen.' ) );
         }
-
         try {
             $alt_text = AAG_API_Handler::generate_alt_from_base64( $image_b64, $mime_type, $prompt );
             $alt_text = sanitize_text_field( trim( $alt_text ) );
@@ -226,6 +375,143 @@ class AAG_Frontend {
             wp_send_json_success( array( 'alt' => $alt_text ) );
         } catch ( Exception $e ) {
             wp_send_json_error( array( 'message' => $e->getMessage() ) );
+        }
+    }
+
+    /* ── AJAX: SEO Titel + Meta Description ─────────────── */
+    public static function ajax_frontend_seo() {
+        if ( ! check_ajax_referer( 'aag_frontend_nonce', 'nonce', false ) ) {
+            wp_send_json_error( array( 'message' => 'Sicherheitsfehler.' ) );
+        }
+
+        $url = esc_url_raw( $_POST['url'] ?? '' );
+        if ( empty( $url ) ) {
+            wp_send_json_error( array( 'message' => 'Keine URL angegeben.' ) );
+        }
+
+        // Seiten-Inhalt abrufen
+        $response = wp_remote_get( $url, array(
+            'timeout'    => 20,
+            'user-agent' => 'Mozilla/5.0 (compatible; MRS-SEO-Bot/1.0)',
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            wp_send_json_error( array( 'message' => 'Seite konnte nicht geladen werden: ' . $response->get_error_message() ) );
+        }
+
+        $html = wp_remote_retrieve_body( $response );
+        if ( empty( $html ) ) {
+            wp_send_json_error( array( 'message' => 'Seite lieferte keinen Inhalt.' ) );
+        }
+
+        // Relevanten Text-Inhalt extrahieren
+        // Title-Tag
+        preg_match( '/<title[^>]*>(.*?)<\/title>/is', $html, $title_match );
+        $existing_title = isset($title_match[1]) ? trim(strip_tags($title_match[1])) : '';
+
+        // Meta description
+        preg_match( '/<meta[^>]+name=["\']description["\'][^>]+content=["\'](.*?)["\'][^>]*>/is', $html, $desc_match );
+        $existing_desc = isset($desc_match[1]) ? trim($desc_match[1]) : '';
+
+        // H1
+        preg_match( '/<h1[^>]*>(.*?)<\/h1>/is', $html, $h1_match );
+        $h1 = isset($h1_match[1]) ? trim(strip_tags($h1_match[1])) : '';
+
+        // Sichtbaren Text-Inhalt extrahieren (max 2000 Zeichen)
+        $text_content = preg_replace( '/<(script|style|nav|header|footer|aside)[^>]*>.*?<\/\1>/is', '', $html );
+        $text_content = strip_tags( $text_content );
+        $text_content = preg_replace( '/\s+/', ' ', $text_content );
+        $text_content = trim( substr( $text_content, 0, 2000 ) );
+
+        // Sprache bestimmen
+        $opts     = get_option( AAG_OPTION, array() );
+        $language = $opts['language'] ?? 'auto';
+        $lang_names = array(
+            'de'=>'German','en'=>'English','fr'=>'French','es'=>'Spanish',
+            'it'=>'Italian','nl'=>'Dutch','pt'=>'Portuguese','pl'=>'Polish',
+            'tr'=>'Turkish','ar'=>'Arabic','zh'=>'Chinese','ja'=>'Japanese',
+        );
+        if ( $language === 'auto' ) {
+            $lang_instruction = 'Use the same language as the page content.';
+        } else {
+            $lang_instruction = 'Write in ' . ( $lang_names[$language] ?? 'English' ) . '.';
+        }
+
+        $prompt = 'You are an SEO expert. Based on this webpage content, generate:
+1. An SEO-optimized page title (max 60 characters, compelling, includes main keyword)
+2. A meta description (120-160 characters, describes the page, includes a call-to-action)
+
+' . $lang_instruction . '
+
+Page URL: ' . $url . '
+Existing title: ' . $existing_title . '
+H1: ' . $h1 . '
+Page content excerpt: ' . $text_content . '
+
+Return ONLY valid JSON in this exact format, nothing else:
+{"title":"your title here","description":"your description here"}';
+
+        try {
+            $raw = AAG_API_Handler::generate_alt_from_base64( '', '', $prompt );
+        } catch ( Exception $e ) {
+            // Fallback: send as text prompt via a different path
+            $raw = self::generate_seo_text( $prompt, $opts );
+        }
+
+        // JSON parsen
+        $raw   = trim( $raw );
+        $start = strpos( $raw, '{' );
+        $end   = strrpos( $raw, '}' );
+        if ( $start !== false && $end !== false ) {
+            $raw = substr( $raw, $start, $end - $start + 1 );
+        }
+        $decoded = json_decode( $raw, true );
+
+        if ( ! $decoded || ! isset( $decoded['title'], $decoded['description'] ) ) {
+            wp_send_json_error( array( 'message' => 'KI hat kein gueltiges Format zurueckgegeben. Bitte versuche es erneut.' ) );
+        }
+
+        $title = sanitize_text_field( trim( $decoded['title'] ) );
+        $desc  = sanitize_textarea_field( trim( $decoded['description'] ) );
+
+        AAG_Stats::record( $opts['provider'] ?? 'gemini' );
+        wp_send_json_success( array( 'title' => $title, 'description' => $desc ) );
+    }
+
+    /* Helper: text-only API call (no image) */
+    private static function generate_seo_text( string $prompt, array $opts ): string {
+        $provider = $opts['provider'] ?? 'gemini';
+
+        if ( $provider === 'gemini' ) {
+            $api_key = $opts['gemini_key'] ?? '';
+            $model   = $opts['gemini_model'] ?? 'gemini-2.5-flash';
+            $body    = array(
+                'contents' => array( array( 'parts' => array( array( 'text' => $prompt ) ) ) ),
+                'generationConfig' => array( 'maxOutputTokens' => 400, 'temperature' => 0.4 ),
+            );
+            $url  = 'https://generativelanguage.googleapis.com/v1beta/models/' . urlencode($model) . ':generateContent?key=' . urlencode($api_key);
+            $resp = wp_remote_post( $url, array( 'timeout'=>30, 'headers'=>array('Content-Type'=>'application/json'), 'body'=>wp_json_encode($body) ) );
+            if ( is_wp_error($resp) ) throw new Exception( $resp->get_error_message() );
+            $data = json_decode( wp_remote_retrieve_body($resp), true );
+            return $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
+
+        } elseif ( $provider === 'openai' ) {
+            $api_key = $opts['openai_key'] ?? '';
+            $model   = $opts['openai_model'] ?? 'gpt-4o-mini';
+            $body    = array( 'model'=>$model, 'max_tokens'=>400, 'messages'=>array( array('role'=>'user','content'=>$prompt) ) );
+            $resp    = wp_remote_post( 'https://api.openai.com/v1/chat/completions', array( 'timeout'=>30, 'headers'=>array('Content-Type'=>'application/json','Authorization'=>'Bearer '.$api_key), 'body'=>wp_json_encode($body) ) );
+            if ( is_wp_error($resp) ) throw new Exception( $resp->get_error_message() );
+            $data = json_decode( wp_remote_retrieve_body($resp), true );
+            return $data['choices'][0]['message']['content'] ?? '';
+
+        } else {
+            $api_key = $opts['claude_key'] ?? '';
+            $model   = $opts['claude_model'] ?? 'claude-haiku-4-5-20251001';
+            $body    = array( 'model'=>$model, 'max_tokens'=>400, 'messages'=>array( array('role'=>'user','content'=>$prompt) ) );
+            $resp    = wp_remote_post( 'https://api.anthropic.com/v1/messages', array( 'timeout'=>30, 'headers'=>array('Content-Type'=>'application/json','x-api-key'=>$api_key,'anthropic-version'=>'2023-06-01'), 'body'=>wp_json_encode($body) ) );
+            if ( is_wp_error($resp) ) throw new Exception( $resp->get_error_message() );
+            $data = json_decode( wp_remote_retrieve_body($resp), true );
+            return $data['content'][0]['text'] ?? '';
         }
     }
 }
