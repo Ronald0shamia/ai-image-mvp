@@ -19,8 +19,9 @@ class MSS_PageSpeed {
         $url      = esc_url_raw( $_POST['url'] ?? get_home_url() );
         $strategy = in_array( $_POST['strategy'] ?? 'mobile', array( 'mobile', 'desktop' ), true )
                     ? $_POST['strategy'] : 'mobile';
-        $opts     = get_option( AAG_OPTION, array() );
-        $api_key  = $opts['pagespeed_key'] ?? '';
+        $opts          = get_option( AAG_OPTION, array() );
+        $posted_api_key = sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) );
+        $api_key       = $posted_api_key !== '' ? $posted_api_key : ( $opts['pagespeed_key'] ?? '' );
 
         $api_url = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed'
             . '?url=' . urlencode( $url )
@@ -308,16 +309,22 @@ class MSS_PageSpeed {
         <script>
         jQuery(function($){
             var nonce='<?php echo esc_js($nonce);?>', ajaxUrl='<?php echo esc_url(admin_url('admin-ajax.php'));?>';
+            function errorMsg(res, fallback) {
+                return res && res.data && res.data.message ? res.data.message : fallback;
+            }
+            function showScanError(message) {
+                $('#mss-scan-status').empty().append($('<span>').css('color','#dc2626').text(message));
+            }
             $('#mss-scan-btn').on('click', function(){
                 var url=$('#mss-scan-url').val(), strategy=$('input[name="mss_strategy"]:checked').val(), key=$('#mss-ps-key').val();
-                if(!url){ alert('Bitte eine URL eingeben.'); return; }
+                if(!url){ showScanError('Bitte eine URL eingeben.'); return; }
                 $(this).prop('disabled',true).text('Scan laeuft...');
                 $('#mss-scan-status').text('Google PageSpeed API wird aufgerufen...');
                 $.post(ajaxUrl,{action:'mss_run_pagespeed',nonce:nonce,url:url,strategy:strategy,api_key:key},function(res){
                     $('#mss-scan-btn').prop('disabled',false).text('Scan starten');
                     if(res.success){ $('#mss-scan-status').text('Scan abgeschlossen.'); location.reload(); }
-                    else $('#mss-scan-status').html('<span style="color:#dc2626">Fehler: '+res.data.message+'</span>');
-                }).fail(function(){ $('#mss-scan-btn').prop('disabled',false).text('Scan starten'); $('#mss-scan-status').html('<span style="color:#dc2626">Verbindungsfehler</span>'); });
+                    else showScanError('Fehler: '+errorMsg(res,'PageSpeed Scan konnte nicht gestartet werden.'));
+                }).fail(function(){ $('#mss-scan-btn').prop('disabled',false).text('Scan starten'); showScanError('Verbindungsfehler. Bitte versuche es erneut.'); });
             });
         });
         </script>

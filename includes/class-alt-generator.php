@@ -88,6 +88,12 @@ class AAG_Alt_Generator {
         if ( ! $attachment_id ) {
             wp_send_json_error( array( 'message' => 'Ungueltige Bild-ID.' ) );
         }
+        if ( ! wp_attachment_is_image( $attachment_id ) ) {
+            wp_send_json_error( array( 'message' => 'Die ID gehoert nicht zu einem Bild.' ) );
+        }
+        if ( ! current_user_can( 'edit_post', $attachment_id ) ) {
+            wp_send_json_error( array( 'message' => 'Keine Berechtigung fuer dieses Bild.' ) );
+        }
 
         $image_url = wp_get_attachment_url( $attachment_id );
         if ( ! $image_url ) {

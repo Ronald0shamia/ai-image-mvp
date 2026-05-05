@@ -2,6 +2,10 @@
     var el = wp.element.createElement, addFilter = wp.hooks.addFilter, Fragment = wp.element.Fragment, useState = wp.element.useState;
     var aag = window.aagData || {};
 
+    function messageFromResponse(res, fallback) {
+        return res && res.data && res.data.message ? res.data.message : fallback;
+    }
+
     addFilter('editor.BlockEdit', 'aag/add-alt-button', function (BlockEdit) {
         return function (props) {
             if (props.name !== 'core/image') return el(BlockEdit, props);
@@ -15,8 +19,8 @@
                 jQuery.post(aag.ajaxUrl, { action:'aag_generate_alt', nonce:aag.nonce, attachment_id:id }, function (res) {
                     setLoading(false);
                     if (res.success) { props.setAttributes({ alt: res.data.alt }); setMessage(res.data.alt); }
-                    else setMessage(res.data.message || 'Fehler');
-                }).fail(function () { setLoading(false); setMessage('Verbindungsfehler'); });
+                    else setMessage(messageFromResponse(res, 'Alt-Text konnte nicht generiert werden.'));
+                }).fail(function () { setLoading(false); setMessage('Verbindungsfehler. Bitte versuche es erneut.'); });
             }
 
             return el(Fragment, null, el(BlockEdit, props),
@@ -24,7 +28,7 @@
                     el('button', { type:'button', className:'components-button is-secondary is-small', onClick:handleGenerate, disabled:loading },
                         loading ? (aag.labels&&aag.labels.loading?aag.labels.loading:'Wird generiert...') : (aag.labels&&aag.labels.generate?aag.labels.generate:'Alt-Text generieren')
                     ),
-                    message && el('span', { style:{ fontSize:'12px', color: message.startsWith('Kein')||message.includes('fehler')||message.includes('Fehler') ? '#dc2626':'#16a34a' } }, message)
+                    message && el('span', { style:{ fontSize:'12px', color: message.startsWith('Kein')||message.includes('fehler')||message.includes('Fehler')||message.includes('konnte nicht') ? '#dc2626':'#16a34a' } }, message)
                 )
             );
         };

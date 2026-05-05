@@ -120,7 +120,7 @@ class AAG_Bulk {
                 setStatus('Bilder werden geladen...');
 
                 $.post(ajaxUrl, { action:'aag_bulk_get_images', nonce:nonce, mode:mode }, function(res){
-                    if (!res.success) { setStatus('Fehler: ' + res.data.message); finish(); return; }
+                    if (!res.success) { setStatus('Fehler: ' + errorMsg(res, 'Bilder konnten nicht geladen werden.')); finish(); return; }
                     queue = res.data.ids;
                     if (!queue.length) { setStatus('Keine Bilder gefunden.'); finish(); return; }
                     setStatus('Verarbeite ' + queue.length + ' Bilder...');
@@ -131,6 +131,10 @@ class AAG_Bulk {
             $('#bulk-stop-btn').on('click', function(){ stop = true; setStatus('Wird abgebrochen...'); });
             $('#bulk-clear-log').on('click', function(){ $('#bulk-log').empty(); });
 
+            function errorMsg(res, fallback) {
+                return res && res.data && res.data.message ? res.data.message : fallback;
+            }
+
             function processNext(delay){
                 if (stop || !queue.length) { finish(); return; }
                 var id    = queue.shift();
@@ -139,11 +143,11 @@ class AAG_Bulk {
 
                 $.post(ajaxUrl, { action:'aag_bulk_process_one', nonce:nonce, attachment_id:id }, function(res){
                     if (res.success) { done++; addLog('ok', 'Bild #' + id + ': ' + res.data.alt); $('#bulk-done').text(done); }
-                    else             { errors++; addLog('err', 'Bild #' + id + ': ' + (res.data.message||'Fehler')); $('#bulk-errors').text(errors); }
+                    else             { errors++; addLog('err', 'Bild #' + id + ': ' + errorMsg(res, 'Alt-Text konnte nicht generiert werden.')); $('#bulk-errors').text(errors); }
                     updateProg(done + errors, total);
                     setTimeout(function(){ processNext(delay); }, delay);
                 }).fail(function(){
-                    errors++; addLog('err', 'Bild #' + id + ': Verbindungsfehler'); $('#bulk-errors').text(errors);
+                    errors++; addLog('err', 'Bild #' + id + ': Verbindungsfehler. Bitte versuche es erneut.'); $('#bulk-errors').text(errors);
                     updateProg(done + errors, done + errors + queue.length);
                     setTimeout(function(){ processNext(delay); }, delay);
                 });
@@ -214,6 +218,12 @@ class AAG_Bulk {
 
         $id = intval( $_POST['attachment_id'] ?? 0 );
         if ( ! $id ) wp_send_json_error( array( 'message' => 'Ungueltige ID.' ) );
+        if ( ! wp_attachment_is_image( $id ) ) {
+            wp_send_json_error( array( 'message' => 'Die ID gehoert nicht zu einem Bild.' ) );
+        }
+        if ( ! current_user_can( 'edit_post', $id ) ) {
+            wp_send_json_error( array( 'message' => 'Keine Berechtigung fuer dieses Bild.' ) );
+        }
 
         $image_url = wp_get_attachment_url( $id );
         if ( ! $image_url ) wp_send_json_error( array( 'message' => 'Bild nicht gefunden.' ) );

@@ -277,7 +277,7 @@ class AAG_Frontend {
                     .then(function(data){
                         closePopup(); btnAnalyze.disabled=false;
                         if(data.success){ resultText.textContent=data.data.alt; resultBox.style.display='block'; resultBox.scrollIntoView({behavior:'smooth',block:'nearest'}); }
-                        else showError(errorBox, data.data.message||'Fehler bei der Analyse.');
+                        else showError(errorBox, errorMsg(data,'Fehler bei der Analyse.'));
                     }).catch(function(){ closePopup(); btnAnalyze.disabled=false; showError(errorBox,'Verbindungsfehler.'); });
                 };
                 reader.readAsDataURL(selectedFile);
@@ -313,7 +313,7 @@ class AAG_Frontend {
                         updateCount(seoDesc,  descCount,  160);
                         seoResult.style.display='block';
                         seoResult.scrollIntoView({behavior:'smooth',block:'nearest'});
-                    } else showError(seoError, data.data.message||'Fehler bei der Analyse.');
+                    } else showError(seoError, errorMsg(data,'Fehler bei der Analyse.'));
                 }).catch(function(){ closePopup(); seoBtn.disabled=false; seoBtn.textContent='SEO-Texte generieren'; showError(seoError,'Verbindungsfehler.'); });
             });
 
@@ -325,6 +325,10 @@ class AAG_Frontend {
                 var len=el.textContent.length;
                 counter.textContent=len+' / '+max;
                 counter.style.color=len>max?'#dc2626':(len>=Math.round(max*0.75)?'#16a34a':'#94a3b8');
+            }
+
+            function errorMsg(data, fallback){
+                return data && data.data && data.data.message ? data.data.message : fallback;
             }
 
             /* Kopieren fuer SEO-Felder */
@@ -359,17 +363,22 @@ class AAG_Frontend {
         if ( ! check_ajax_referer( 'aag_frontend_nonce', 'nonce', false ) ) {
             wp_send_json_error( array( 'message' => 'Sicherheitsfehler.' ) );
         }
+        if ( ! self::check_rate_limit( 'alt', 10, 10 * MINUTE_IN_SECONDS ) ) {
+            wp_send_json_error( array( 'message' => 'Zu viele Anfragen. Bitte versuche es spaeter erneut.' ), 429 );
+        }
         $opts      = get_option( AAG_OPTION, array() );
         $prompt    = $opts['prompt'] ?? AAG_Alt_Generator::default_prompt();
         $prompt    = AAG_Alt_Generator::inject_language( $prompt, $opts['language'] ?? 'auto' );
-        $image_b64 = sanitize_text_field( $_POST['image_data'] ?? '' );
-        $mime_type = sanitize_mime_type( $_POST['mime_type']   ?? 'image/jpeg' );
+        $image     = self::validate_frontend_image(
+            $_POST['image_data'] ?? '',
+            $_POST['mime_type'] ?? 'image/jpeg'
+        );
 
-        if ( empty( $image_b64 ) ) {
-            wp_send_json_error( array( 'message' => 'Kein Bild empfangen.' ) );
+        if ( is_wp_error( $image ) ) {
+            wp_send_json_error( array( 'message' => $image->get_error_message() ) );
         }
         try {
-            $alt_text = AAG_API_Handler::generate_alt_from_base64( $image_b64, $mime_type, $prompt );
+            $alt_text = AAG_API_Handler::generate_alt_from_base64( $image['base64'], $image['mime'], $prompt );
             $alt_text = sanitize_text_field( trim( $alt_text ) );
             AAG_Stats::record( $opts['provider'] ?? 'gemini' );
             wp_send_json_success( array( 'alt' => $alt_text ) );
@@ -383,16 +392,22 @@ class AAG_Frontend {
         if ( ! check_ajax_referer( 'aag_frontend_nonce', 'nonce', false ) ) {
             wp_send_json_error( array( 'message' => 'Sicherheitsfehler.' ) );
         }
+        if ( ! self::check_rate_limit( 'seo', 20, 10 * MINUTE_IN_SECONDS ) ) {
+            wp_send_json_error( array( 'message' => 'Zu viele Anfragen. Bitte versuche es spaeter erneut.' ), 429 );
+        }
 
-        $url = esc_url_raw( $_POST['url'] ?? '' );
-        if ( empty( $url ) ) {
-            wp_send_json_error( array( 'message' => 'Keine URL angegeben.' ) );
+        $url = self::validate_public_url( $_POST['url'] ?? '' );
+        if ( is_wp_error( $url ) ) {
+            wp_send_json_error( array( 'message' => $url->get_error_message() ) );
         }
 
         // Seiten-Inhalt abrufen
-        $response = wp_remote_get( $url, array(
-            'timeout'    => 20,
-            'user-agent' => 'Mozilla/5.0 (compatible; MRS-SEO-Bot/1.0)',
+        $response = wp_safe_remote_get( $url, array(
+            'timeout'             => 20,
+            'redirection'         => 3,
+            'limit_response_size' => 1024 * 1024,
+            'reject_unsafe_urls'  => true,
+            'user-agent'          => 'Mozilla/5.0 (compatible; MRS-SEO-Bot/1.0)',
         ) );
 
         if ( is_wp_error( $response ) ) {
@@ -452,10 +467,9 @@ Return ONLY valid JSON in this exact format, nothing else:
 {"title":"your title here","description":"your description here"}';
 
         try {
-            $raw = AAG_API_Handler::generate_alt_from_base64( '', '', $prompt );
+            $raw = AAG_API_Handler::generate_text( $prompt, 400, 0.4 );
         } catch ( Exception $e ) {
-            // Fallback: send as text prompt via a different path
-            $raw = self::generate_seo_text( $prompt, $opts );
+            wp_send_json_error( array( 'message' => $e->getMessage() ) );
         }
 
         // JSON parsen
@@ -478,40 +492,143 @@ Return ONLY valid JSON in this exact format, nothing else:
         wp_send_json_success( array( 'title' => $title, 'description' => $desc ) );
     }
 
-    /* Helper: text-only API call (no image) */
-    private static function generate_seo_text( string $prompt, array $opts ): string {
-        $provider = $opts['provider'] ?? 'gemini';
+    private static function check_rate_limit( string $bucket, int $limit, int $window ): bool {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        $ip = is_string( $ip ) ? sanitize_text_field( wp_unslash( $ip ) ) : 'unknown';
+        $key = 'aag_frontend_rl_' . md5( $bucket . '|' . $ip );
 
-        if ( $provider === 'gemini' ) {
-            $api_key = $opts['gemini_key'] ?? '';
-            $model   = $opts['gemini_model'] ?? 'gemini-2.5-flash';
-            $body    = array(
-                'contents' => array( array( 'parts' => array( array( 'text' => $prompt ) ) ) ),
-                'generationConfig' => array( 'maxOutputTokens' => 400, 'temperature' => 0.4 ),
-            );
-            $url  = 'https://generativelanguage.googleapis.com/v1beta/models/' . urlencode($model) . ':generateContent?key=' . urlencode($api_key);
-            $resp = wp_remote_post( $url, array( 'timeout'=>30, 'headers'=>array('Content-Type'=>'application/json'), 'body'=>wp_json_encode($body) ) );
-            if ( is_wp_error($resp) ) throw new Exception( $resp->get_error_message() );
-            $data = json_decode( wp_remote_retrieve_body($resp), true );
-            return $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
-
-        } elseif ( $provider === 'openai' ) {
-            $api_key = $opts['openai_key'] ?? '';
-            $model   = $opts['openai_model'] ?? 'gpt-4o-mini';
-            $body    = array( 'model'=>$model, 'max_tokens'=>400, 'messages'=>array( array('role'=>'user','content'=>$prompt) ) );
-            $resp    = wp_remote_post( 'https://api.openai.com/v1/chat/completions', array( 'timeout'=>30, 'headers'=>array('Content-Type'=>'application/json','Authorization'=>'Bearer '.$api_key), 'body'=>wp_json_encode($body) ) );
-            if ( is_wp_error($resp) ) throw new Exception( $resp->get_error_message() );
-            $data = json_decode( wp_remote_retrieve_body($resp), true );
-            return $data['choices'][0]['message']['content'] ?? '';
-
-        } else {
-            $api_key = $opts['claude_key'] ?? '';
-            $model   = $opts['claude_model'] ?? 'claude-haiku-4-5-20251001';
-            $body    = array( 'model'=>$model, 'max_tokens'=>400, 'messages'=>array( array('role'=>'user','content'=>$prompt) ) );
-            $resp    = wp_remote_post( 'https://api.anthropic.com/v1/messages', array( 'timeout'=>30, 'headers'=>array('Content-Type'=>'application/json','x-api-key'=>$api_key,'anthropic-version'=>'2023-06-01'), 'body'=>wp_json_encode($body) ) );
-            if ( is_wp_error($resp) ) throw new Exception( $resp->get_error_message() );
-            $data = json_decode( wp_remote_retrieve_body($resp), true );
-            return $data['content'][0]['text'] ?? '';
+        $count = intval( get_transient( $key ) );
+        if ( $count >= $limit ) {
+            return false;
         }
+
+        set_transient( $key, $count + 1, $window );
+        return true;
     }
+
+    private static function validate_frontend_image( $raw_b64, $raw_mime ) {
+        $allowed_mimes = array( 'image/jpeg', 'image/png', 'image/webp', 'image/gif' );
+        $max_bytes     = 5 * 1024 * 1024;
+        $mime_type     = is_string( $raw_mime ) ? sanitize_mime_type( wp_unslash( $raw_mime ) ) : 'image/jpeg';
+        $image_b64     = is_string( $raw_b64 ) ? wp_unslash( $raw_b64 ) : '';
+
+        if ( preg_match( '/^data:([^;]+);base64,(.*)$/s', $image_b64, $matches ) ) {
+            $mime_type = sanitize_mime_type( $matches[1] );
+            $image_b64 = $matches[2];
+        }
+
+        $image_b64 = preg_replace( '/\s+/', '', $image_b64 );
+        if ( empty( $image_b64 ) ) {
+            return new WP_Error( 'aag_no_image', 'Kein Bild empfangen.' );
+        }
+
+        if ( ! in_array( $mime_type, $allowed_mimes, true ) ) {
+            return new WP_Error( 'aag_invalid_mime', 'Dieser Bildtyp ist nicht erlaubt.' );
+        }
+
+        if ( strlen( $image_b64 ) > ceil( $max_bytes * 4 / 3 ) + 4 ) {
+            return new WP_Error( 'aag_image_too_large', 'Datei zu gross. Maximal 5 MB.' );
+        }
+
+        $binary = base64_decode( $image_b64, true );
+        if ( false === $binary ) {
+            return new WP_Error( 'aag_invalid_base64', 'Bilddaten sind ungueltig.' );
+        }
+
+        if ( strlen( $binary ) > $max_bytes ) {
+            return new WP_Error( 'aag_image_too_large', 'Datei zu gross. Maximal 5 MB.' );
+        }
+
+        $info = function_exists( 'getimagesizefromstring' ) ? @getimagesizefromstring( $binary ) : false;
+        if ( ! is_array( $info ) || empty( $info['mime'] ) || ! in_array( $info['mime'], $allowed_mimes, true ) ) {
+            return new WP_Error( 'aag_invalid_image', 'Die Datei ist kein gueltiges Bild.' );
+        }
+
+        if ( $info['mime'] !== $mime_type ) {
+            $mime_type = $info['mime'];
+        }
+
+        return array(
+            'base64' => base64_encode( $binary ),
+            'mime'   => $mime_type,
+        );
+    }
+
+    private static function validate_public_url( $raw_url ) {
+        $url = is_string( $raw_url ) ? esc_url_raw( wp_unslash( $raw_url ) ) : '';
+        if ( empty( $url ) ) {
+            return new WP_Error( 'aag_no_url', 'Keine URL angegeben.' );
+        }
+
+        $parts  = wp_parse_url( $url );
+        $scheme = strtolower( $parts['scheme'] ?? '' );
+        $host   = strtolower( $parts['host'] ?? '' );
+
+        if ( ! in_array( $scheme, array( 'http', 'https' ), true ) || empty( $host ) ) {
+            return new WP_Error( 'aag_invalid_url', 'Bitte eine gueltige http- oder https-URL angeben.' );
+        }
+
+        if ( in_array( $host, array( 'localhost', 'localhost.localdomain' ), true ) || substr( $host, -6 ) === '.local' ) {
+            return new WP_Error( 'aag_private_url', 'Interne URLs sind nicht erlaubt.' );
+        }
+
+        $ips = self::resolve_host_ips( $host );
+        if ( empty( $ips ) ) {
+            return new WP_Error( 'aag_unresolved_url', 'Die URL konnte nicht aufgeloest werden.' );
+        }
+
+        foreach ( $ips as $ip ) {
+            if ( ! self::is_public_ip( $ip ) ) {
+                return new WP_Error( 'aag_private_url', 'Interne URLs sind nicht erlaubt.' );
+            }
+        }
+
+        return $url;
+    }
+
+    private static function resolve_host_ips( string $host ): array {
+        if ( filter_var( $host, FILTER_VALIDATE_IP ) ) {
+            return array( $host );
+        }
+
+        $ips = array();
+        $a_records = function_exists( 'gethostbynamel' ) ? gethostbynamel( $host ) : false;
+        if ( is_array( $a_records ) ) {
+            $ips = array_merge( $ips, $a_records );
+        }
+
+        if ( function_exists( 'dns_get_record' ) ) {
+            $aaaa_records = @dns_get_record( $host, DNS_AAAA );
+            if ( is_array( $aaaa_records ) ) {
+                foreach ( $aaaa_records as $record ) {
+                    if ( ! empty( $record['ipv6'] ) ) {
+                        $ips[] = $record['ipv6'];
+                    }
+                }
+            }
+        }
+
+        return array_values( array_unique( $ips ) );
+    }
+
+    private static function is_public_ip( string $ip ): bool {
+        if ( filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 ) ) {
+            return (bool) filter_var(
+                $ip,
+                FILTER_VALIDATE_IP,
+                FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+            );
+        }
+
+        if ( filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6 ) ) {
+            return (bool) filter_var(
+                $ip,
+                FILTER_VALIDATE_IP,
+                FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+            );
+        }
+
+        return false;
+    }
+
 }

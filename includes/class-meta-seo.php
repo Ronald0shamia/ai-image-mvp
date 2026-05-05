@@ -85,8 +85,16 @@ class MSS_Meta_SEO {
 
     public static function ajax_save_meta() {
         check_ajax_referer( 'mss_meta_nonce', 'nonce' );
-        if ( ! current_user_can('edit_posts') ) wp_send_json_error();
         $pid  = intval( $_POST['post_id'] ?? 0 );
+        $post = get_post( $pid );
+
+        if ( ! $post ) {
+            wp_send_json_error( array( 'message' => 'Ungueltige Post-ID.' ) );
+        }
+        if ( ! current_user_can( 'edit_post', $pid ) ) {
+            wp_send_json_error( array( 'message' => 'Keine Berechtigung.' ) );
+        }
+
         $desc = sanitize_textarea_field( $_POST['meta_desc'] ?? '' );
         update_post_meta( $pid, '_yoast_wpseo_metadesc', $desc );
         update_post_meta( $pid, '_aioseop_description',  $desc );
@@ -99,6 +107,14 @@ class MSS_Meta_SEO {
         if ( ! current_user_can('manage_options') ) wp_send_json_error();
         $pid     = intval( $_POST['post_id'] ?? 0 );
         $post    = get_post( $pid );
+
+        if ( ! $post ) {
+            wp_send_json_error( array( 'message' => 'Ungueltige Post-ID.' ) );
+        }
+        if ( ! current_user_can( 'edit_post', $pid ) ) {
+            wp_send_json_error( array( 'message' => 'Keine Berechtigung.' ) );
+        }
+
         $content = wp_trim_words( wp_strip_all_tags( $post->post_content ), 30, '' );
         $desc    = $post->post_title . '. ' . $content;
         $desc    = substr( $desc, 0, 155 ) . ( strlen($desc) > 155 ? '...' : '' );
@@ -219,6 +235,10 @@ class MSS_Meta_SEO {
             var nonce='<?php echo esc_js($nonce);?>';
             var ajaxUrl='<?php echo esc_url(admin_url('admin-ajax.php'));?>';
 
+            function errorMsg(res, fallback) {
+                return res && res.data && res.data.message ? res.data.message : fallback;
+            }
+
             $(document).on('input','.mss-meta-textarea',function(){
                 var len=$(this).val().length;
                 var c=$(this).closest('.mss-meta-editor').find('.mss-char-count');
@@ -229,7 +249,18 @@ class MSS_Meta_SEO {
                 var btn=$(this),id=btn.data('id'),desc=btn.closest('.mss-meta-editor').find('.mss-meta-textarea').val();
                 btn.prop('disabled',true).text('Wird gespeichert...');
                 $.post(ajaxUrl,{action:'mss_save_meta',nonce:nonce,post_id:id,meta_desc:desc},function(res){
-                    btn.prop('disabled',false).text('Gespeichert!');
+                    btn.prop('disabled',false);
+                    if(res.success){
+                        btn.text('Gespeichert!');
+                        setTimeout(function(){btn.text('Speichern');},2500);
+                    } else {
+                        btn.text('Fehler');
+                        btn.closest('.mss-meta-editor').find('.mss-char-count').text(errorMsg(res,'Meta Description konnte nicht gespeichert werden.')).css('color','#dc2626');
+                        setTimeout(function(){btn.text('Speichern');},2500);
+                    }
+                }).fail(function(){
+                    btn.prop('disabled',false).text('Fehler');
+                    btn.closest('.mss-meta-editor').find('.mss-char-count').text('Verbindungsfehler. Bitte versuche es erneut.').css('color','#dc2626');
                     setTimeout(function(){btn.text('Speichern');},2500);
                 });
             });
@@ -240,6 +271,10 @@ class MSS_Meta_SEO {
                 $.post(ajaxUrl,{action:'mss_bulk_meta',nonce:nonce,post_id:id},function(res){
                     btn.prop('disabled',false).text('Automatisch generieren');
                     if(res.success) btn.closest('.mss-meta-editor').find('.mss-meta-textarea').val(res.data.desc).trigger('input');
+                    else btn.closest('.mss-meta-editor').find('.mss-char-count').text(errorMsg(res,'Meta Description konnte nicht generiert werden.')).css('color','#dc2626');
+                }).fail(function(){
+                    btn.prop('disabled',false).text('Automatisch generieren');
+                    btn.closest('.mss-meta-editor').find('.mss-char-count').text('Verbindungsfehler. Bitte versuche es erneut.').css('color','#dc2626');
                 });
             });
 

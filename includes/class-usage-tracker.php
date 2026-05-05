@@ -106,10 +106,15 @@ class AAG_Usage_Tracker {
             });
             $(document).on('click','.aag-refresh-usage-btn',function(){
                 var btn=$(this), id=btn.data('id');
+                btn.siblings('.aag-refresh-error').remove();
                 btn.prop('disabled',true).text('Wird gescannt...');
                 $.post(ajaxurl,{action:'aag_refresh_usage',nonce:'<?php echo wp_create_nonce("aag_refresh_usage"); ?>',id:id},function(res){
                     btn.prop('disabled',false).text('Neu scannen');
                     if(res.success) location.reload();
+                    else btn.after($('<span class="aag-refresh-error">').css({color:'#dc2626',fontSize:'11px',marginLeft:'8px'}).text(res && res.data && res.data.message ? res.data.message : 'Scan konnte nicht aktualisiert werden.'));
+                }).fail(function(){
+                    btn.prop('disabled',false).text('Neu scannen');
+                    btn.after($('<span class="aag-refresh-error">').css({color:'#dc2626',fontSize:'11px',marginLeft:'8px'}).text('Verbindungsfehler. Bitte versuche es erneut.'));
                 });
             });
         });
@@ -121,6 +126,12 @@ class AAG_Usage_Tracker {
         check_ajax_referer( 'aag_refresh_usage', 'nonce' );
         if ( ! current_user_can( 'upload_files' ) ) wp_send_json_error();
         $id    = intval( $_POST['id'] ?? 0 );
+        if ( ! wp_attachment_is_image( $id ) ) {
+            wp_send_json_error( array( 'message' => 'Die ID gehoert nicht zu einem Bild.' ) );
+        }
+        if ( ! current_user_can( 'edit_post', $id ) ) {
+            wp_send_json_error( array( 'message' => 'Keine Berechtigung fuer dieses Bild.' ) );
+        }
         $usage = self::scan_usage( $id );
         wp_send_json_success( array( 'count' => count( $usage ) ) );
     }

@@ -2,6 +2,16 @@ jQuery(function ($) {
     if (typeof wp === 'undefined' || !wp.media) return;
     var aag = window.aagData || {};
 
+    function messageFromResponse(res, fallback) {
+        return res && res.data && res.data.message ? res.data.message : fallback;
+    }
+
+    function setStatus(status, message, ok) {
+        status.empty().append(
+            $('<span>').css('color', ok ? '#16a34a' : '#dc2626').text(message)
+        );
+    }
+
     function injectButton(frame) {
         frame.on('open', function () {
             setTimeout(function () {
@@ -22,13 +32,13 @@ jQuery(function ($) {
                         btn.prop('disabled', false).text(aag.labels && aag.labels.generate ? aag.labels.generate : 'Alt-Text generieren');
                         if (res.success) {
                             frame.$el.find('input.attachment-alt, [data-setting="alt"] input').val(res.data.alt).trigger('change');
-                            status.html('<span style="color:#16a34a">' + res.data.alt + '</span>');
+                            setStatus(status, res.data.alt, true);
                         } else {
-                            status.html('<span style="color:#dc2626">' + (res.data.message || 'Fehler') + '</span>');
+                            setStatus(status, messageFromResponse(res, 'Alt-Text konnte nicht generiert werden.'), false);
                         }
                     }).fail(function () {
                         btn.prop('disabled', false).text('Alt-Text generieren');
-                        status.html('<span style="color:#dc2626">Verbindungsfehler</span>');
+                        setStatus(status, 'Verbindungsfehler. Bitte pruefe deine Verbindung und versuche es erneut.', false);
                     });
                 });
             }, 300);

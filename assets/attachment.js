@@ -1,6 +1,16 @@
 jQuery(function ($) {
     var aag = window.aagData || {};
 
+    function messageFromResponse(res, fallback) {
+        return res && res.data && res.data.message ? res.data.message : fallback;
+    }
+
+    function setStatus(status, message, ok) {
+        status.empty().append(
+            $('<span>').css('color', ok ? '#16a34a' : '#dc2626').text(message)
+        );
+    }
+
     $(document).on('click', '.aag-generate-btn', function () {
         var btn = $(this), id = btn.data('id'), status = $('#aag-status-' + id);
         if (!id) return;
@@ -12,23 +22,28 @@ jQuery(function ($) {
             btn.prop('disabled', false).text('Alt-Text generieren');
             if (res.success) {
                 $('input#attachment_alt, input[name="attachments[' + id + '][image_alt]"], #attachment-details-alt-text').val(res.data.alt).trigger('change');
-                status.html('<span style="color:#16a34a">' + res.data.alt + '</span>');
+                setStatus(status, res.data.alt, true);
             } else {
-                status.html('<span style="color:#dc2626">' + (res.data.message || 'Fehler') + '</span>');
+                setStatus(status, messageFromResponse(res, 'Alt-Text konnte nicht generiert werden.'), false);
             }
         })
         .fail(function () {
             btn.prop('disabled', false).text('Alt-Text generieren');
-            status.html('<span style="color:#dc2626">Verbindungsfehler</span>');
+            setStatus(status, 'Verbindungsfehler. Bitte pruefe deine Verbindung und versuche es erneut.', false);
         });
     });
 
     $(document).on('click', '.aag-refresh-usage-btn', function () {
         var btn = $(this), id = btn.data('id');
+        var status = btn.siblings('.aag-library-status, .aag-status').first();
         btn.prop('disabled', true).text('Wird gescannt...');
         $.post(aag.ajaxUrl, { action: 'aag_refresh_usage', nonce: aag.nonce, id: id }, function (res) {
             btn.prop('disabled', false).text('Neu scannen');
             if (res.success) location.reload();
+            else if (status.length) setStatus(status, messageFromResponse(res, 'Bild-Verwendung konnte nicht aktualisiert werden.'), false);
+        }).fail(function () {
+            btn.prop('disabled', false).text('Neu scannen');
+            if (status.length) setStatus(status, 'Verbindungsfehler. Bitte versuche es erneut.', false);
         });
     });
 
@@ -66,14 +81,14 @@ jQuery(function ($) {
                     if (wp.media && wp.media.frame) {
                         try { wp.media.frame.state().get('selection').first().set('alt', res.data.alt); } catch(e){}
                     }
-                    status.html('<span style="color:#16a34a">' + res.data.alt + '</span>');
+                    setStatus(status, res.data.alt, true);
                 } else {
-                    status.html('<span style="color:#dc2626">' + (res.data.message || 'Fehler') + '</span>');
+                    setStatus(status, messageFromResponse(res, 'Alt-Text konnte nicht generiert werden.'), false);
                 }
             })
             .fail(function () {
                 btn.prop('disabled', false).text('Alt-Text generieren');
-                status.html('<span style="color:#dc2626">Verbindungsfehler</span>');
+                setStatus(status, 'Verbindungsfehler. Bitte pruefe deine Verbindung und versuche es erneut.', false);
             });
         });
     }

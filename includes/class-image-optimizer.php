@@ -21,24 +21,26 @@ class MSS_Image_Optimizer {
         }
     }
 
-    public static function optimize( int $id ): array {
+    public static function optimize( int $id, int $quality = 82, bool $create_webp = true ): array {
         $file = get_attached_file( $id );
         if ( ! $file || ! file_exists( $file ) ) {
             throw new Exception( 'Datei nicht gefunden.' );
         }
 
         $mime      = get_post_mime_type( $id );
+        $quality   = max( 60, min( 95, $quality ) );
         $orig_size = filesize( $file );
         $webp_url  = '';
+        $compressed = false;
 
         if ( extension_loaded('gd') && in_array( $mime, array( 'image/jpeg', 'image/png' ), true ) ) {
-            self::compress_file( $file, $mime );
+            $compressed = self::compress_file( $file, $mime, $quality );
         }
 
-        if ( extension_loaded('gd') && function_exists('imagewebp') ) {
-            $webp_path = self::convert_to_webp( $file, $mime );
+        if ( $create_webp && extension_loaded('gd') && function_exists('imagewebp') ) {
+            $webp_path = self::convert_to_webp( $file, $mime, $quality );
             if ( $webp_path ) {
-                $webp_url = str_replace( ABSPATH, site_url('/'), $webp_path );
+                $webp_url = self::file_to_url( $webp_path );
             }
         }
 
@@ -48,51 +50,122 @@ class MSS_Image_Optimizer {
         update_post_meta( $id, self::META_ORIG_SIZE, $orig_size );
         update_post_meta( $id, self::META_OPT_SIZE,  $new_size );
         if ( $webp_url ) update_post_meta( $id, self::META_WEBP_URL, $webp_url );
+        else delete_post_meta( $id, self::META_WEBP_URL );
 
         return array(
             'orig_size' => $orig_size,
             'new_size'  => $new_size,
-            'saved_kb'  => round( ( $orig_size - $new_size ) / 1024, 1 ),
-            'saved_pct' => $orig_size > 0 ? round( ( ( $orig_size - $new_size ) / $orig_size ) * 100, 1 ) : 0,
+            'saved_kb'  => round( max( 0, $orig_size - $new_size ) / 1024, 1 ),
+            'saved_pct' => $orig_size > 0 ? round( ( max( 0, $orig_size - $new_size ) / $orig_size ) * 100, 1 ) : 0,
             'webp_url'  => $webp_url,
             'has_webp'  => ! empty( $webp_url ),
+            'compressed'=> $compressed,
         );
     }
 
-    private static function compress_file( string $file, string $mime ) {
-        try {
-            if ( $mime === 'image/jpeg' ) {
-                $img = imagecreatefromjpeg( $file );
-                if ( $img ) { imagejpeg( $img, $file, 82 ); imagedestroy( $img ); }
-            } elseif ( $mime === 'image/png' ) {
-                $img = imagecreatefrompng( $file );
-                if ( $img ) {
-                    imagealphablending( $img, false );
-                    imagesavealpha( $img, true );
-                    imagepng( $img, $file, 7 );
-                    imagedestroy( $img );
-                }
+    private static function compress_file( string $file, string $mime, int $quality ): bool {
+        $tmp = wp_tempnam( basename( $file ) );
+        if ( ! $tmp ) {
+            throw new Exception( 'Temp-Datei konnte nicht erstellt werden.' );
+        }
+
+        $img = null;
+        $written = false;
+
+        if ( $mime === 'image/jpeg' ) {
+            $img = @imagecreatefromjpeg( $file );
+            if ( $img ) $written = @imagejpeg( $img, $tmp, $quality );
+        } elseif ( $mime === 'image/png' ) {
+            $img = @imagecreatefrompng( $file );
+            if ( $img ) {
+                imagealphablending( $img, false );
+                imagesavealpha( $img, true );
+                $written = @imagepng( $img, $tmp, 7 );
             }
-        } catch ( Exception $e ) {}
+        }
+
+        if ( $img ) imagedestroy( $img );
+
+        if ( ! $written || ! self::is_valid_image_file( $tmp, $mime ) ) {
+            @unlink( $tmp );
+            return false;
+        }
+
+        if ( filesize( $tmp ) >= filesize( $file ) ) {
+            @unlink( $tmp );
+            return false;
+        }
+
+        self::replace_with_backup( $file, $tmp );
+        @unlink( $tmp );
+        return true;
     }
 
-    private static function convert_to_webp( string $file, string $mime ): ?string {
+    private static function convert_to_webp( string $file, string $mime, int $quality ): ?string {
         $webp_path = preg_replace( '/\.(jpe?g|png|gif)$/i', '.webp', $file );
         if ( $webp_path === $file ) $webp_path .= '.webp';
 
-        try {
-            $img = null;
-            if ( $mime === 'image/jpeg' )     $img = imagecreatefromjpeg( $file );
-            elseif ( $mime === 'image/png' )  { $img = imagecreatefrompng( $file ); if ($img){ imagealphablending($img,false); imagesavealpha($img,true); } }
-            elseif ( $mime === 'image/gif' )  $img = imagecreatefromgif( $file );
+        $tmp = wp_tempnam( basename( $webp_path ) );
+        if ( ! $tmp ) return null;
 
-            if ( $img ) {
-                imagewebp( $img, $webp_path, 82 );
-                imagedestroy( $img );
-                return file_exists( $webp_path ) ? $webp_path : null;
+        $img = null;
+        if ( $mime === 'image/jpeg' )     $img = @imagecreatefromjpeg( $file );
+        elseif ( $mime === 'image/png' )  { $img = @imagecreatefrompng( $file ); if ($img){ imagealphablending($img,false); imagesavealpha($img,true); } }
+        elseif ( $mime === 'image/gif' )  $img = @imagecreatefromgif( $file );
+
+        if ( ! $img ) {
+            @unlink( $tmp );
+            return null;
+        }
+
+        $written = @imagewebp( $img, $tmp, $quality );
+        imagedestroy( $img );
+
+        if ( ! $written || ! self::is_valid_image_file( $tmp, 'image/webp' ) ) {
+            @unlink( $tmp );
+            return null;
+        }
+
+        self::replace_with_backup( $webp_path, $tmp );
+        @unlink( $tmp );
+        return file_exists( $webp_path ) ? $webp_path : null;
+    }
+
+    private static function replace_with_backup( string $target, string $source ) {
+        $backup = '';
+        if ( file_exists( $target ) ) {
+            $backup = $target . '.mss-backup-' . wp_generate_password( 8, false, false );
+            if ( ! @copy( $target, $backup ) ) {
+                throw new Exception( 'Backup konnte nicht erstellt werden.' );
             }
-        } catch ( Exception $e ) {}
-        return null;
+        }
+
+        if ( ! @copy( $source, $target ) || filesize( $target ) <= 0 ) {
+            if ( $backup && file_exists( $backup ) ) @copy( $backup, $target );
+            if ( $backup && file_exists( $backup ) ) @unlink( $backup );
+            throw new Exception( 'Optimierte Datei konnte nicht geschrieben werden.' );
+        }
+
+        if ( $backup && file_exists( $backup ) ) @unlink( $backup );
+    }
+
+    private static function is_valid_image_file( string $file, string $expected_mime ): bool {
+        if ( ! file_exists( $file ) || filesize( $file ) <= 0 ) return false;
+        $info = @getimagesize( $file );
+        return is_array( $info ) && ! empty( $info['mime'] ) && $info['mime'] === $expected_mime;
+    }
+
+    private static function file_to_url( string $file ): string {
+        $uploads = wp_get_upload_dir();
+        $base_dir = wp_normalize_path( $uploads['basedir'] ?? '' );
+        $base_url = $uploads['baseurl'] ?? '';
+        $path     = wp_normalize_path( $file );
+
+        if ( $base_dir && $base_url && strpos( $path, $base_dir ) === 0 ) {
+            return trailingslashit( $base_url ) . ltrim( substr( $path, strlen( $base_dir ) ), '/' );
+        }
+
+        return str_replace( ABSPATH, site_url('/'), $file );
     }
 
     public static function ajax_get_list() {
@@ -120,9 +193,17 @@ class MSS_Image_Optimizer {
 
         $id = intval( $_POST['attachment_id'] ?? 0 );
         if ( ! $id ) wp_send_json_error( array( 'message' => 'Ungueltige ID.' ) );
+        if ( ! wp_attachment_is_image( $id ) ) {
+            wp_send_json_error( array( 'message' => 'Die ID gehoert nicht zu einem Bild.' ) );
+        }
+        if ( ! current_user_can( 'edit_post', $id ) ) {
+            wp_send_json_error( array( 'message' => 'Keine Berechtigung fuer dieses Bild.' ) );
+        }
+        $quality     = intval( $_POST['quality'] ?? 82 );
+        $create_webp = ! empty( $_POST['webp'] ) && $_POST['webp'] !== 'false';
 
         try {
-            $result = self::optimize( $id );
+            $result = self::optimize( $id, $quality, $create_webp );
             wp_send_json_success( array_merge( $result, array( 'id' => $id ) ) );
         } catch ( Exception $e ) {
             wp_send_json_error( array( 'message' => $e->getMessage() ) );
@@ -291,35 +372,41 @@ class MSS_Image_Optimizer {
             $('#opt-start-btn').on('click', function(){
                 var mode  = $('input[name="opt_mode"]:checked').val();
                 var delay = parseInt($('#opt-delay').val()) * 1000;
+                var quality = parseInt($('#opt-quality').val()) || 82;
+                var webp = $('#opt-webp').is(':checked') ? 1 : 0;
                 done = 0; errors = 0; stop = false;
                 $('#opt-start-btn').hide(); $('#opt-stop-btn').show();
                 $('#opt-progress-card,#opt-log-card').show();
                 $('#opt-log').empty(); $('#opt-status').text('Bilder werden geladen...');
 
                 $.post(ajaxUrl,{action:'mss_get_image_list',nonce:nonce,mode:mode},function(res){
-                    if(!res.success){ $('#opt-status').text('Fehler: '+res.data.message); finish(); return; }
+                    if(!res.success){ $('#opt-status').text('Fehler: '+errorMsg(res, 'Bilder konnten nicht geladen werden.')); finish(); return; }
                     queue = res.data.ids;
                     if(!queue.length){ $('#opt-status').text('Keine Bilder zum Optimieren.'); finish(); return; }
-                    processNext(delay);
+                    processNext(delay, quality, webp);
                 });
             });
 
             $('#opt-stop-btn').on('click',function(){ stop=true; $('#opt-status').text('Wird abgebrochen...'); });
 
-            function processNext(delay){
+            function errorMsg(res, fallback) {
+                return res && res.data && res.data.message ? res.data.message : fallback;
+            }
+
+            function processNext(delay, quality, webp){
                 if(stop||!queue.length){ finish(); return; }
                 var id=queue.shift(), total=done+errors+queue.length+1;
                 updateProg(done+errors,total);
 
-                $.post(ajaxUrl,{action:'mss_optimize_image',nonce:nonce,attachment_id:id},function(res){
-                    if(res.success){ done++; var d=res.data; addLog('ok','Bild #'+id+': gespart '+d.saved_kb+'KB ('+d.saved_pct+'%)'+(d.has_webp?' + WebP':'')); }
-                    else            { errors++; addLog('err','Bild #'+id+': '+(res.data.message||'Fehler')); }
+                $.post(ajaxUrl,{action:'mss_optimize_image',nonce:nonce,attachment_id:id,quality:quality,webp:webp},function(res){
+                    if(res.success){ done++; var d=res.data; addLog('ok','Bild #'+id+': gespart '+d.saved_kb+'KB ('+d.saved_pct+'%)'+(d.compressed?' komprimiert':' bereits optimal')+(d.has_webp?' + WebP':'')); }
+                    else            { errors++; addLog('err','Bild #'+id+': '+errorMsg(res, 'Bild konnte nicht optimiert werden.')); }
                     updateProg(done+errors,total);
-                    setTimeout(function(){ processNext(delay); }, delay);
+                    setTimeout(function(){ processNext(delay, quality, webp); }, delay);
                 }).fail(function(){
-                    errors++; addLog('err','Bild #'+id+': Verbindungsfehler');
+                    errors++; addLog('err','Bild #'+id+': Verbindungsfehler. Bitte versuche es erneut.');
                     updateProg(done+errors,done+errors+queue.length);
-                    setTimeout(function(){ processNext(delay); }, delay);
+                    setTimeout(function(){ processNext(delay, quality, webp); }, delay);
                 });
             }
 

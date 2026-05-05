@@ -14,6 +14,11 @@ class AAG_API_Handler {
         return self::dispatch( $b64, $mime, $prompt, $opts );
     }
 
+    public static function generate_text( string $prompt, int $max_tokens = 400, float $temperature = 0.4 ): string {
+        $opts = get_option( AAG_OPTION, [] );
+        return self::dispatch_text( $prompt, $opts, $max_tokens, $temperature );
+    }
+
     private static function dispatch( string $b64, string $mime, string $prompt, array $opts ): string {
         $provider = $opts['provider'] ?? 'gemini';
         switch ( $provider ) {
@@ -21,6 +26,16 @@ class AAG_API_Handler {
             case 'claude': return self::call_claude( $b64, $mime, $prompt, $opts );
             case 'gemini':
             default:       return self::call_gemini( $b64, $mime, $prompt, $opts );
+        }
+    }
+
+    private static function dispatch_text( string $prompt, array $opts, int $max_tokens, float $temperature ): string {
+        $provider = $opts['provider'] ?? 'gemini';
+        switch ( $provider ) {
+            case 'openai': return self::call_openai_text( $prompt, $opts, $max_tokens, $temperature );
+            case 'claude': return self::call_claude_text( $prompt, $opts, $max_tokens, $temperature );
+            case 'gemini':
+            default:       return self::call_gemini_text( $prompt, $opts, $max_tokens, $temperature );
         }
     }
 
@@ -116,6 +131,107 @@ class AAG_API_Handler {
                     ) ),
                     array( 'type' => 'text', 'text' => 'Generate the alt text now.' ),
                 ),
+            ) ),
+        );
+
+        $res  = self::post(
+            'https://api.anthropic.com/v1/messages',
+            $body,
+            array(
+                'x-api-key'         => $api_key,
+                'anthropic-version' => '2023-06-01',
+            )
+        );
+        $text = isset( $res['content'][0]['text'] )
+            ? $res['content'][0]['text']
+            : null;
+
+        if ( null === $text ) {
+            throw new Exception( 'Claude: Keine Antwort erhalten.' );
+        }
+        return $text;
+    }
+
+    private static function call_gemini_text( string $prompt, array $opts, int $max_tokens, float $temperature ): string {
+        $api_key = $opts['gemini_key'] ?? '';
+        $model   = $opts['gemini_model'] ?? 'gemini-2.5-flash';
+
+        if ( empty( $api_key ) ) {
+            throw new Exception( 'Gemini API-Key fehlt.' );
+        }
+
+        $body = array(
+            'contents' => array( array(
+                'parts' => array( array( 'text' => $prompt ) ),
+            ) ),
+            'generationConfig' => array(
+                'maxOutputTokens' => $max_tokens,
+                'temperature'     => $temperature,
+            ),
+        );
+
+        $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+            . urlencode( $model ) . ':generateContent?key=' . urlencode( $api_key );
+
+        $res  = self::post( $url, $body, array() );
+        $text = isset( $res['candidates'][0]['content']['parts'][0]['text'] )
+            ? $res['candidates'][0]['content']['parts'][0]['text']
+            : null;
+
+        if ( null === $text ) {
+            throw new Exception( 'Gemini: Keine Antwort erhalten.' );
+        }
+        return $text;
+    }
+
+    private static function call_openai_text( string $prompt, array $opts, int $max_tokens, float $temperature ): string {
+        $api_key = $opts['openai_key'] ?? '';
+        $model   = $opts['openai_model'] ?? 'gpt-4o-mini';
+
+        if ( empty( $api_key ) ) {
+            throw new Exception( 'OpenAI API-Key fehlt.' );
+        }
+
+        $body = array(
+            'model'       => $model,
+            'max_tokens'  => $max_tokens,
+            'temperature' => $temperature,
+            'messages'    => array( array(
+                'role'    => 'user',
+                'content' => $prompt,
+            ) ),
+        );
+
+        $res  = self::post(
+            'https://api.openai.com/v1/chat/completions',
+            $body,
+            array( 'Authorization' => 'Bearer ' . $api_key )
+        );
+        $text = isset( $res['choices'][0]['message']['content'] )
+            ? $res['choices'][0]['message']['content']
+            : null;
+
+        if ( null === $text ) {
+            throw new Exception( 'OpenAI: Keine Antwort erhalten.' );
+        }
+        return $text;
+    }
+
+    private static function call_claude_text( string $prompt, array $opts, int $max_tokens, float $temperature ): string {
+        $api_key = $opts['claude_key'] ?? '';
+        $model   = $opts['claude_model'] ?? 'claude-haiku-4-5-20251001';
+
+        if ( empty( $api_key ) ) {
+            throw new Exception( 'Claude API-Key fehlt.' );
+        }
+
+        $body = array(
+            'model'       => $model,
+            'max_tokens'  => $max_tokens,
+            'temperature' => $temperature,
+            'messages'    => array( array(
+                'role'    => 'user',
+                'content' => $prompt,
             ) ),
         );
 
