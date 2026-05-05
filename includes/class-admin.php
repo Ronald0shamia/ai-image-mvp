@@ -62,20 +62,31 @@ class MSS_Admin {
     }
 
     public static function enqueue_assets( $hook ) {
-        $pages = array(
+        $hook_pages = array(
             'toplevel_page_ai-alt-generator',
             'index.php',
-            'ai-alt-text_page_ai-alt-bulk',
-            'ai-alt-text_page_ai-alt-stats',
-            'ai-alt-text_page_ai-alt-usage',
-            'ai-alt-text_page_mss-pagespeed',
-            'ai-alt-text_page_mss-image-optimizer',
-            'ai-alt-text_page_mss-meta-seo',
+            'ai-alt-generator_page_ai-alt-bulk',
+            'ai-alt-generator_page_ai-alt-stats',
+            'ai-alt-generator_page_ai-alt-usage',
+            'ai-alt-generator_page_mss-pagespeed',
+            'ai-alt-generator_page_mss-image-optimizer',
+            'ai-alt-generator_page_mss-meta-seo',
             'upload.php',
         );
-        if ( ! in_array( $hook, $pages, true ) ) return;
+        $plugin_pages = array(
+            'ai-alt-generator',
+            'ai-alt-bulk',
+            'ai-alt-stats',
+            'ai-alt-usage',
+            'mss-pagespeed',
+            'mss-image-optimizer',
+            'mss-meta-seo',
+        );
+        $current_page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+
+        if ( ! in_array( $hook, $hook_pages, true ) && ! in_array( $current_page, $plugin_pages, true ) ) return;
         wp_enqueue_style( 'mss-admin', AAG_URL . 'assets/admin.css', array(), AAG_VERSION );
-        if ( $hook === 'toplevel_page_ai-alt-generator' ) {
+        if ( $hook === 'toplevel_page_ai-alt-generator' || $current_page === 'ai-alt-generator' ) {
             wp_enqueue_media();
             wp_enqueue_script( 'mss-admin', AAG_URL . 'assets/admin.js', array('jquery'), AAG_VERSION, true );
         }
