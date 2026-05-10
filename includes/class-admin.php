@@ -71,6 +71,7 @@ class MSS_Admin {
             'ai-alt-generator_page_mss-pagespeed',
             'ai-alt-generator_page_mss-image-optimizer',
             'ai-alt-generator_page_mss-meta-seo',
+            'ai-alt-generator_page_mss-issue-row',
             'upload.php',
         );
         $plugin_pages = array(
@@ -81,6 +82,7 @@ class MSS_Admin {
             'mss-pagespeed',
             'mss-image-optimizer',
             'mss-meta-seo',
+            'mss-issue-row'
         );
         $current_page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
 
