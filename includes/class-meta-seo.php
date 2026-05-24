@@ -117,11 +117,52 @@ class MSS_Meta_SEO {
 
         $content = wp_trim_words( wp_strip_all_tags( $post->post_content ), 30, '' );
         $desc    = $post->post_title . '. ' . $content;
-        $desc    = substr( $desc, 0, 155 ) . ( strlen($desc) > 155 ? '...' : '' );
+        $desc    = self::trim_meta_description( $desc );
         update_post_meta( $pid, '_yoast_wpseo_metadesc',  $desc );
         update_post_meta( $pid, '_aioseop_description',   $desc );
         update_post_meta( $pid, '_rank_math_description', $desc );
         wp_send_json_success( array( 'desc' => $desc ) );
+    }
+
+    private static function trim_meta_description( string $text, int $max = 160 ): string {
+        $text = trim( preg_replace( '/\s+/', ' ', wp_strip_all_tags( $text ) ) );
+        if ( self::text_len( $text ) <= $max ) {
+            return $text;
+        }
+
+        $limit = $max - 3;
+        $cut   = self::text_substr( $text, 0, $limit );
+        $sentence_end = max(
+            self::text_strrpos( $cut, '.' ) ?: 0,
+            self::text_strrpos( $cut, '!' ) ?: 0,
+            self::text_strrpos( $cut, '?' ) ?: 0
+        );
+
+        if ( $sentence_end >= 110 ) {
+            return trim( self::text_substr( $cut, 0, $sentence_end + 1 ) );
+        }
+
+        $space = self::text_strrpos( $cut, ' ' );
+        if ( $space && $space >= 80 ) {
+            $cut = self::text_substr( $cut, 0, $space );
+        }
+
+        return rtrim( $cut, " \t\n\r\0\x0B.,;:-" ) . '...';
+    }
+
+    private static function text_len( string $text ): int {
+        return function_exists( 'mb_strlen' ) ? mb_strlen( $text ) : strlen( $text );
+    }
+
+    private static function text_substr( string $text, int $start, ?int $length = null ): string {
+        if ( function_exists( 'mb_substr' ) ) {
+            return null === $length ? mb_substr( $text, $start ) : mb_substr( $text, $start, $length );
+        }
+        return null === $length ? substr( $text, $start ) : substr( $text, $start, $length );
+    }
+
+    private static function text_strrpos( string $text, string $needle ) {
+        return function_exists( 'mb_strrpos' ) ? mb_strrpos( $text, $needle ) : strrpos( $text, $needle );
     }
 
     public static function render_page() {

@@ -17,19 +17,29 @@ class MSS_PageSpeed {
         }
 
         $url      = esc_url_raw( $_POST['url'] ?? get_home_url() );
+        if ( empty( $url ) || ! wp_http_validate_url( $url ) ) {
+            wp_send_json_error( array( 'message' => 'Bitte eine gueltige oeffentliche URL mit http oder https eingeben.' ) );
+        }
         $strategy = in_array( $_POST['strategy'] ?? 'mobile', array( 'mobile', 'desktop' ), true )
                     ? $_POST['strategy'] : 'mobile';
         $opts          = get_option( AAG_OPTION, array() );
         $posted_api_key = sanitize_text_field( wp_unslash( $_POST['api_key'] ?? '' ) );
         $api_key       = $posted_api_key !== '' ? $posted_api_key : ( $opts['pagespeed_key'] ?? '' );
 
-        $api_url = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed'
-            . '?url=' . urlencode( $url )
-            . '&strategy=' . $strategy
-            . '&category=performance&category=seo&category=accessibility&category=best-practices'
-            . ( $api_key ? '&key=' . urlencode( $api_key ) : '' );
+        $params = array(
+            'url'      => $url,
+            'strategy' => strtoupper( $strategy ),
+        );
+        if ( $api_key ) {
+            $params['key'] = $api_key;
+        }
+        $api_url = add_query_arg( $params, 'https://pagespeedonline.googleapis.com/pagespeedonline/v5/runPagespeed' )
+            . '&category=PERFORMANCE&category=SEO&category=ACCESSIBILITY&category=BEST_PRACTICES';
 
-        $response = wp_remote_get( $api_url, array( 'timeout' => 60 ) );
+        $response = wp_remote_get( $api_url, array(
+            'timeout'    => 60,
+            'user-agent' => 'MRS-SEO-Speed/' . MSS_VERSION . '; ' . home_url(),
+        ) );
 
         if ( is_wp_error( $response ) ) {
             wp_send_json_error( array( 'message' => $response->get_error_message() ) );

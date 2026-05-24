@@ -402,11 +402,9 @@ class AAG_Frontend {
         }
 
         // Seiten-Inhalt abrufen
-        $response = wp_safe_remote_get( $url, array(
+        $response = self::fetch_public_url( $url, array(
             'timeout'             => 20,
-            'redirection'         => 3,
             'limit_response_size' => 1024 * 1024,
-            'reject_unsafe_urls'  => true,
             'user-agent'          => 'Mozilla/5.0 (compatible; MRS-SEO-Bot/1.0)',
         ) );
 
@@ -436,7 +434,7 @@ class AAG_Frontend {
         $text_content = preg_replace( '/<(script|style|nav|header|footer|aside)[^>]*>.*?<\/\1>/is', '', $html );
         $text_content = strip_tags( $text_content );
         $text_content = preg_replace( '/\s+/', ' ', $text_content );
-        $text_content = trim( substr( $text_content, 0, 2000 ) );
+        $text_content = trim( self::text_substr( $text_content, 0, 2000 ) );
 
         // Sprache bestimmen
         $opts     = get_option( AAG_OPTION, array() );
@@ -454,7 +452,7 @@ class AAG_Frontend {
 
         $prompt = 'You are an SEO expert. Based on this webpage content, generate:
 1. An SEO-optimized page title (max 60 characters, compelling, includes main keyword)
-2. A meta description (120-160 characters, describes the page, includes a call-to-action)
+2. A complete meta description (120-160 characters, one natural sentence, no cut-off ending)
 
 ' . $lang_instruction . '
 
@@ -486,7 +484,7 @@ Return ONLY valid JSON in this exact format, nothing else:
         }
 
         $title = sanitize_text_field( trim( $decoded['title'] ) );
-        $desc  = sanitize_textarea_field( trim( $decoded['description'] ) );
+        $desc  = self::trim_seo_description( sanitize_textarea_field( trim( $decoded['description'] ) ) );
 
         AAG_Stats::record( $opts['provider'] ?? 'gemini' );
         wp_send_json_success( array( 'title' => $title, 'description' => $desc ) );
@@ -504,6 +502,47 @@ Return ONLY valid JSON in this exact format, nothing else:
 
         set_transient( $key, $count + 1, $window );
         return true;
+    }
+
+    private static function trim_seo_description( string $text, int $max = 160 ): string {
+        $text = trim( preg_replace( '/\s+/', ' ', wp_strip_all_tags( $text ) ) );
+        if ( self::text_len( $text ) <= $max ) {
+            return $text;
+        }
+
+        $limit = $max - 3;
+        $cut = self::text_substr( $text, 0, $limit );
+        $sentence_end = max(
+            self::text_strrpos( $cut, '.' ) ?: 0,
+            self::text_strrpos( $cut, '!' ) ?: 0,
+            self::text_strrpos( $cut, '?' ) ?: 0
+        );
+
+        if ( $sentence_end >= 110 ) {
+            return trim( self::text_substr( $cut, 0, $sentence_end + 1 ) );
+        }
+
+        $space = self::text_strrpos( $cut, ' ' );
+        if ( $space && $space >= 80 ) {
+            $cut = self::text_substr( $cut, 0, $space );
+        }
+
+        return rtrim( $cut, " \t\n\r\0\x0B.,;:-" ) . '...';
+    }
+
+    private static function text_len( string $text ): int {
+        return function_exists( 'mb_strlen' ) ? mb_strlen( $text ) : strlen( $text );
+    }
+
+    private static function text_substr( string $text, int $start, ?int $length = null ): string {
+        if ( function_exists( 'mb_substr' ) ) {
+            return null === $length ? mb_substr( $text, $start ) : mb_substr( $text, $start, $length );
+        }
+        return null === $length ? substr( $text, $start ) : substr( $text, $start, $length );
+    }
+
+    private static function text_strrpos( string $text, string $needle ) {
+        return function_exists( 'mb_strrpos' ) ? mb_strrpos( $text, $needle ) : strrpos( $text, $needle );
     }
 
     private static function validate_frontend_image( $raw_b64, $raw_mime ) {
@@ -584,6 +623,37 @@ Return ONLY valid JSON in this exact format, nothing else:
         }
 
         return $url;
+    }
+
+    private static function fetch_public_url( string $url, array $args, int $redirects = 3 ) {
+        $args['redirection'] = 0;
+        $response = wp_remote_get( $url, $args );
+
+        if ( is_wp_error( $response ) || $redirects <= 0 ) {
+            return $response;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+        if ( $code < 300 || $code >= 400 ) {
+            return $response;
+        }
+
+        $location = wp_remote_retrieve_header( $response, 'location' );
+        if ( empty( $location ) ) {
+            return $response;
+        }
+
+        $next_url = wp_http_validate_url( $location ) ? $location : wp_normalize_path( $location );
+        if ( strpos( $next_url, 'http://' ) !== 0 && strpos( $next_url, 'https://' ) !== 0 ) {
+            $next_url = WP_Http::make_absolute_url( $location, $url );
+        }
+
+        $next_url = self::validate_public_url( $next_url );
+        if ( is_wp_error( $next_url ) ) {
+            return $next_url;
+        }
+
+        return self::fetch_public_url( $next_url, $args, $redirects - 1 );
     }
 
     private static function resolve_host_ips( string $host ): array {
