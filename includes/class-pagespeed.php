@@ -38,6 +38,9 @@ class MSS_PageSpeed {
 
         $response = wp_remote_get( $api_url, array(
             'timeout'    => 60,
+            'headers'    => array(
+                'Referer' => home_url( '/' ),
+            ),
             'user-agent' => 'MRS-SEO-Speed/' . MSS_VERSION . '; ' . home_url(),
         ) );
 

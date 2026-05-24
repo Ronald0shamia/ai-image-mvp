@@ -6,12 +6,12 @@ class AAG_API_Handler {
     public static function generate_alt( string $image_url, string $prompt ): string {
         $opts = get_option( AAG_OPTION, [] );
         $img  = self::fetch_image_base64( $image_url );
-        return self::dispatch( $img['data'], $img['mime'], $prompt, $opts );
+        return self::generate_alt_with_retry( $img['data'], $img['mime'], $prompt, $opts );
     }
 
     public static function generate_alt_from_base64( string $b64, string $mime, string $prompt ): string {
         $opts = get_option( AAG_OPTION, [] );
-        return self::dispatch( $b64, $mime, $prompt, $opts );
+        return self::generate_alt_with_retry( $b64, $mime, $prompt, $opts );
     }
 
     public static function generate_text( string $prompt, int $max_tokens = 400, float $temperature = 0.4 ): string {
@@ -27,6 +27,44 @@ class AAG_API_Handler {
             case 'gemini':
             default:       return self::call_gemini( $b64, $mime, $prompt, $opts );
         }
+    }
+
+    private static function generate_alt_with_retry( string $b64, string $mime, string $prompt, array $opts ): string {
+        $text = self::clean_alt_text( self::dispatch( $b64, $mime, $prompt, $opts ) );
+        if ( ! self::looks_incomplete_alt( $text ) ) {
+            return $text;
+        }
+
+        $retry_prompt = $prompt . "\n\nImportant: Return one complete descriptive alt text. Do not stop mid-sentence. The text must contain at least 6 words and end naturally.";
+        $retry = self::clean_alt_text( self::dispatch( $b64, $mime, $retry_prompt, $opts ) );
+
+        return self::looks_incomplete_alt( $retry ) ? $text : $retry;
+    }
+
+    private static function clean_alt_text( string $text ): string {
+        $text = wp_strip_all_tags( trim( $text ) );
+        $text = preg_replace( '/\s+/', ' ', $text );
+        $text = trim( $text, " \t\n\r\0\x0B\"'" );
+        return $text;
+    }
+
+    private static function looks_incomplete_alt( string $text ): bool {
+        $word_count = str_word_count( $text, 0, 'äöüÄÖÜßáéíóúàèìòùâêîôûçñ' );
+        if ( $word_count < 6 ) {
+            return true;
+        }
+
+        $last = strtolower( trim( preg_replace( '/[^\p{L}\p{N}]+$/u', '', $text ) ) );
+        $words = preg_split( '/\s+/u', $last );
+        $last_word = $words ? end( $words ) : '';
+        $incomplete_endings = array(
+            'mit', 'und', 'oder', 'auf', 'in', 'im', 'am', 'an', 'der', 'die', 'das',
+            'ein', 'eine', 'einem', 'einen', 'of', 'with', 'and', 'or', 'in', 'on',
+            'at', 'the', 'a', 'an', 'de', 'con', 'y', 'o', 'en', 'el', 'la', 'un',
+            'una',
+        );
+
+        return in_array( $last_word, $incomplete_endings, true );
     }
 
     private static function dispatch_text( string $prompt, array $opts, int $max_tokens, float $temperature ): string {
@@ -55,7 +93,7 @@ class AAG_API_Handler {
                     array( 'text' => 'Generate the alt text now.' ),
                 )
             ) ),
-            'generationConfig' => array( 'maxOutputTokens' => 200, 'temperature' => 0.3 ),
+            'generationConfig' => array( 'maxOutputTokens' => 512, 'temperature' => 0.3 ),
         );
 
         $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
@@ -84,7 +122,7 @@ class AAG_API_Handler {
 
         $body = array(
             'model'      => $model,
-            'max_tokens' => 200,
+            'max_tokens' => 300,
             'messages'   => array( array(
                 'role'    => 'user',
                 'content' => array(
@@ -119,7 +157,7 @@ class AAG_API_Handler {
 
         $body = array(
             'model'      => $model,
-            'max_tokens' => 200,
+            'max_tokens' => 300,
             'system'     => $prompt,
             'messages'   => array( array(
                 'role'    => 'user',
