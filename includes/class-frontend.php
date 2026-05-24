@@ -465,22 +465,20 @@ Return ONLY valid JSON in this exact format, nothing else:
 {"title":"your title here","description":"your description here"}';
 
         try {
-            $raw = AAG_API_Handler::generate_text( $prompt, 400, 0.4 );
+            $raw = AAG_API_Handler::generate_text( $prompt, 500, 0.2 );
+            $decoded = self::parse_seo_json( $raw );
+
+            if ( ! $decoded ) {
+                $retry_prompt = $prompt . "\n\nReturn minified JSON only. No markdown. No explanation. No code fence. Use exactly these keys: title, description.";
+                $raw = AAG_API_Handler::generate_text( $retry_prompt, 500, 0.1 );
+                $decoded = self::parse_seo_json( $raw );
+            }
         } catch ( Exception $e ) {
-            wp_send_json_error( array( 'message' => $e->getMessage() ) );
+            $decoded = null;
         }
 
-        // JSON parsen
-        $raw   = trim( $raw );
-        $start = strpos( $raw, '{' );
-        $end   = strrpos( $raw, '}' );
-        if ( $start !== false && $end !== false ) {
-            $raw = substr( $raw, $start, $end - $start + 1 );
-        }
-        $decoded = json_decode( $raw, true );
-
-        if ( ! $decoded || ! isset( $decoded['title'], $decoded['description'] ) ) {
-            wp_send_json_error( array( 'message' => 'KI hat kein gueltiges Format zurueckgegeben. Bitte versuche es erneut.' ) );
+        if ( ! $decoded ) {
+            $decoded = self::fallback_seo_result( $existing_title, $h1, $text_content );
         }
 
         $title = sanitize_text_field( trim( $decoded['title'] ) );
@@ -488,6 +486,63 @@ Return ONLY valid JSON in this exact format, nothing else:
 
         AAG_Stats::record( $opts['provider'] ?? 'gemini' );
         wp_send_json_success( array( 'title' => $title, 'description' => $desc ) );
+    }
+
+    private static function parse_seo_json( string $raw ): ?array {
+        $raw = trim( html_entity_decode( $raw, ENT_QUOTES, 'UTF-8' ) );
+        $raw = preg_replace( '/^```(?:json)?\s*/i', '', $raw );
+        $raw = preg_replace( '/\s*```$/', '', $raw );
+
+        $start = strpos( $raw, '{' );
+        $end   = strrpos( $raw, '}' );
+        if ( $start !== false && $end !== false && $end > $start ) {
+            $raw = substr( $raw, $start, $end - $start + 1 );
+        }
+
+        $decoded = json_decode( $raw, true );
+        if ( is_array( $decoded ) && isset( $decoded['title'], $decoded['description'] ) ) {
+            return $decoded;
+        }
+
+        $raw = preg_replace( '/,\s*([}\]])/', '$1', $raw );
+        $decoded = json_decode( $raw, true );
+        if ( is_array( $decoded ) && isset( $decoded['title'], $decoded['description'] ) ) {
+            return $decoded;
+        }
+
+        return null;
+    }
+
+    private static function fallback_seo_result( string $existing_title, string $h1, string $text_content ): array {
+        $title = trim( $existing_title ?: $h1 );
+        if ( empty( $title ) ) {
+            $title = wp_trim_words( $text_content, 8, '' );
+        }
+        $title = self::trim_seo_title( $title );
+
+        $description = self::trim_seo_description( $text_content );
+        if ( self::text_len( $description ) < 80 && $title ) {
+            $description = self::trim_seo_description( $title . '. ' . $text_content );
+        }
+
+        return array(
+            'title'       => $title ?: 'SEO Titel',
+            'description' => $description ?: 'Entdecke diese Seite und erfahre mehr ueber Inhalte, Leistungen und Vorteile.',
+        );
+    }
+
+    private static function trim_seo_title( string $text, int $max = 60 ): string {
+        $text = trim( preg_replace( '/\s+/', ' ', wp_strip_all_tags( $text ) ) );
+        if ( self::text_len( $text ) <= $max ) {
+            return $text;
+        }
+
+        $cut = self::text_substr( $text, 0, $max );
+        $space = self::text_strrpos( $cut, ' ' );
+        if ( $space && $space >= 30 ) {
+            $cut = self::text_substr( $cut, 0, $space );
+        }
+        return rtrim( $cut, " \t\n\r\0\x0B.,;:-" );
     }
 
     private static function check_rate_limit( string $bucket, int $limit, int $window ): bool {
